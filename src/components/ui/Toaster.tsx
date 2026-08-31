@@ -1,0 +1,29 @@
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/toast";
+import { useToastStore } from "@/components/ui/use-toast";
+
+export function Toaster() {
+  const toasts = useToastStore((s) => s.toasts);
+  const dismiss = useToastStore((s) => s.dismiss);
+
+  return (
+    <ToastProvider>
+      {toasts.map(({ id, title, description, variant }) => (
+        <Toast key={id} variant={variant} onOpenChange={(open) => !open && dismiss(id)}>
+          <div className="grid gap-1">
+            <ToastTitle>{title}</ToastTitle>
+            {description && <ToastDescription>{description}</ToastDescription>}
+          </div>
+          <ToastClose />
+        </Toast>
+      ))}
+      <ToastViewport />
+    </ToastProvider>
+  );
+}

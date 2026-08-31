@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+/blob-report/
+.DS_Store
+*.log
