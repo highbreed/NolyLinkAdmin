@@ -8,7 +8,7 @@ import { apiRequest, ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { AdminLoginRequest, AdminLoginResponse, AdminRole } from "@/api/types";
+import type { AdminLoginRequest, AdminLoginResponse } from "@/api/types";
 
 const schema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -16,19 +16,11 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-const ROLE_OPTIONS: { value: AdminRole; label: string }[] = [
-  { value: "SUPERADMIN", label: "Superadmin" },
-  { value: "OPS", label: "Ops" },
-  { value: "BILLING_ADMIN", label: "Billing admin" },
-  { value: "AUDITOR", label: "Auditor (read-only)" },
-];
-
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const setSession = useSessionStore((s) => s.setSession);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [role, setRole] = useState<AdminRole>("SUPERADMIN");
   const [submitting, setSubmitting] = useState(false);
 
   const {
@@ -45,7 +37,7 @@ export function LoginPage() {
         method: "POST",
         body: values satisfies AdminLoginRequest,
       });
-      setSession(result.access_token, values.username, role);
+      setSession(result.access_token, values.username, "SUPERADMIN");
       const from = (location.state as { from?: Location })?.from?.pathname ?? "/dashboard";
       navigate(from, { replace: true });
     } catch (err) {
@@ -95,22 +87,6 @@ export function LoginPage() {
                 {errors.password.message}
               </p>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="role">Acting as (frontend-only — see docs/frontend_README.md)</Label>
-            <select
-              id="role"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              value={role}
-              onChange={(e) => setRole(e.target.value as AdminRole)}
-            >
-              {ROLE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
           </div>
 
           {serverError && (
