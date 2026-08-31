@@ -6,7 +6,7 @@ import { RequireRole } from "@/auth/RequireRole";
 import { useSessionStore } from "@/auth/session-store";
 
 function renderAt(path: string, role: "SUPERADMIN" | "OPS" | "BILLING_ADMIN" | "AUDITOR") {
-  useSessionStore.setState({ apiKey: "test-key", actingRole: role });
+  useSessionStore.setState({ accessToken: "test-token", username: "test-admin", actingRole: role });
   const queryClient = new QueryClient();
   return render(
     <QueryClientProvider client={queryClient}>

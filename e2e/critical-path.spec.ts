@@ -9,7 +9,8 @@ import { test, expect } from "@playwright/test";
 test("login, register a client, suspend it, see the blocked banner, then reactivate", async ({ page }) => {
   await page.goto("/login");
 
-  await page.getByLabel(/admin api key/i).fill("e2e-test-admin-key");
+  await page.getByLabel(/^username$/i).fill("amina");
+  await page.getByLabel(/^password$/i).fill("e2e-test-password");
   await page.getByRole("button", { name: /sign in/i }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);

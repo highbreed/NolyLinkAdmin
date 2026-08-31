@@ -1,13 +1,17 @@
 /**
  * Single typed HTTP client. Every request goes through here so that:
- *  - the admin API key is attached centrally (never inlined per-call)
- *  - a 401/403 centrally triggers the "session lost" flow (see auth/session-store.ts)
+ *  - the admin JWT is attached centrally as `Authorization: Bearer <token>` (never inlined
+ *    per-call) — this is the real credential the backend's require_admin dependency checks
+ *    (app/core/admin_auth.py), issued by the real POST /admin/login (confirmed 2026-08-31)
+ *  - a 401/403 centrally triggers the "session lost" flow (see auth/session-store.ts) — the
+ *    backend has no refresh-token endpoint, so this always means a forced re-login, never a
+ *    silent refresh
  *  - errors are a consistent, typed shape components can branch on
  *
- * Real backend base: VITE_API_BASE_URL (docs/frontend_README.md documents the split between
- * routes that hit this for real — /v1/devices/initialize, /v1/billing/* — and routes that
- * are MSW-mocked-only because the /admin/api/v1/* backend in admin_portal_design.md hasn't
- * been built yet).
+ * In dev, requests go through Vite's proxy (vite.config.ts) to the real backend so they stay
+ * same-origin (the backend has no CORS middleware) — so VITE_API_BASE_URL is normally left
+ * unset locally; it exists for a prod build served from a different origin than the API,
+ * where the deployment's own reverse proxy/CORS config is expected to make it work.
  */
 import { useSessionStore } from "@/auth/session-store";
 
@@ -47,20 +51,20 @@ export async function apiRequest<TResponse>(
   options: RequestOptions = {},
 ): Promise<TResponse> {
   const { method = "GET", body, query } = options;
-  const apiKey = useSessionStore.getState().apiKey;
+  const accessToken = useSessionStore.getState().accessToken;
 
   const response = await fetch(buildUrl(path, query), {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...(apiKey ? { "X-Admin-Api-Key": apiKey } : {}),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   if (response.status === 401 || response.status === 403) {
     useSessionStore.getState().clearSession();
-    let detail = "Session expired or admin key rejected.";
+    let detail = "Session expired — please sign in again.";
     try {
       const data = (await response.json()) as { detail?: string };
       detail = data.detail ?? detail;

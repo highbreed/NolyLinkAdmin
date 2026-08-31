@@ -20,6 +20,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function TopBar() {
+  const username = useSessionStore((s) => s.username);
   const actingRole = useSessionStore((s) => s.actingRole);
   const clearSession = useSessionStore((s) => s.clearSession);
   const navigate = useNavigate();
@@ -37,11 +38,13 @@ export function TopBar() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="gap-2">
             <User className="h-4 w-4" />
-            {ROLE_LABELS[actingRole] ?? actingRole}
+            {username ?? "Account"}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Signed in via admin API key</DropdownMenuLabel>
+          <DropdownMenuLabel>
+            Signed in as {username} — acting as {ROLE_LABELS[actingRole] ?? actingRole}
+          </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" /> Log out

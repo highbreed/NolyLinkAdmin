@@ -1,34 +1,39 @@
 /**
  * Session state, in memory only (no localStorage/sessionStorage) — lost on hard refresh by
- * design, same principle the original spec wanted for a JWT: a leaked/cached credential must
- * not survive outside an active tab.
+ * design: a leaked/cached credential must not survive outside an active tab. There is no
+ * refresh-token endpoint on the backend, so a hard refresh means a real re-login, not silent
+ * restoration — see docs/frontend_README.md.
  *
- * Real auth today is a single shared `X-Admin-Api-Key` (docs/api_reference.md) — there is no
- * per-admin login/JWT/MFA backend yet (admin_portal_design.md §4/§5.1 is a proposal, not
- * shipped — see docs/admin_portal_design.md's 2026-08-28 build note). `actingRole` lets the
- * UI exercise the RBAC nav-gating and route guards designed for that future backend against
- * MSW mocks; it is NOT a real security boundary — anyone with the shared key can already do
- * everything the real backend allows regardless of what's picked here.
+ * Real auth (confirmed against the live backend 2026-08-31): `POST /admin/login`
+ * (username/password) issues a JWT `access_token`, sent as `Authorization: Bearer <token>` on
+ * every subsequent request (src/api/client.ts). No MFA, no roles on the backend.
+ *
+ * `actingRole` lets the UI exercise the RBAC nav-gating/route guards from
+ * admin_portal_design.md §2 ahead of a real roles column existing — it is NOT a real security
+ * boundary; any logged-in admin can already do everything the real backend allows regardless
+ * of what's picked here.
  */
 import { create } from "zustand";
 import type { AdminRole } from "@/api/types";
 
 interface SessionState {
-  apiKey: string | null;
+  accessToken: string | null;
+  username: string | null;
   actingRole: AdminRole;
-  setSession: (apiKey: string, actingRole: AdminRole) => void;
+  setSession: (accessToken: string, username: string, actingRole: AdminRole) => void;
   setActingRole: (role: AdminRole) => void;
   clearSession: () => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
-  apiKey: null,
+  accessToken: null,
+  username: null,
   actingRole: "SUPERADMIN",
-  setSession: (apiKey, actingRole) => set({ apiKey, actingRole }),
+  setSession: (accessToken, username, actingRole) => set({ accessToken, username, actingRole }),
   setActingRole: (actingRole) => set({ actingRole }),
-  clearSession: () => set({ apiKey: null }),
+  clearSession: () => set({ accessToken: null, username: null }),
 }));
 
 export function isAuthenticated(): boolean {
-  return useSessionStore.getState().apiKey !== null;
+  return useSessionStore.getState().accessToken !== null;
 }

@@ -12,50 +12,77 @@ npm install
 npm run dev
 ```
 
-By default `VITE_ENABLE_MOCKS` is unset, which means **on** — the app boots with an in-browser
-MSW worker intercepting every API call, so it is fully click-through-able with zero backend
-running. Log in with any non-empty string as the "Admin API key" on `/login`.
+By default the app is fully click-through-able with **zero backend running**: an in-browser
+MSW worker intercepts every API call. Log in with any username/password on `/login` (the mock
+accepts any password for a known fixture username — see `src/mocks/fixtures.ts`).
 
-To point at a real running gateway instead:
+### Pointing at a real running backend
+
+The real backend has no CORS middleware, so the frontend never makes a direct cross-origin
+`fetch` to it — instead Vite's dev-server proxy forwards specific path prefixes server-side,
+and the browser only ever talks to its own origin. Two env vars control this (`.env.example`
+has the full explanation):
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8000 VITE_ENABLE_MOCKS=false npm run dev
+# .env
+BACKEND_PROXY_TARGET=http://localhost:8010   # dev-server-only, never sent to the browser
+VITE_USE_REAL_BACKEND=true                    # tells the browser to stop mocking real-shaped calls
 ```
+
+With both set, `/admin/login`, `/admin/users*`, `/v1/devices/initialize`, and `/v1/billing/*`
+travel through the proxy to the real backend; everything else (`/admin/api/v1/*` — no real
+backend for that exists anywhere yet) stays mocked. Confirmed working end-to-end against a
+live instance at `localhost:8010` on 2026-08-31 (`curl` through the dev server's proxy for
+`/v1/health`, `/admin/login`, `/admin/users`, `/v1/billing/subscriptions/{id}` all round-
+tripped correctly).
+
+`VITE_API_BASE_URL` still exists for a **production** build served from a different origin
+than the API, where the deployment's own reverse proxy/CORS is expected to make cross-origin
+calls work — it's not the local-dev path, which is the proxy above instead.
 
 ### What's real vs. mocked — read this before trusting a page's behavior
 
-This matters more than usual here because the two source documents disagree on what backend
-exists: `admin_portal_design.md` is a **design proposal** for a `/admin/api/v1/*` surface
-(admin-user accounts, JWT+MFA sessions, RBAC, clients CRUD, monitoring read-models, alert
-rules, audit log) — none of that backend has been built. The only real, working admin-gated
-endpoints today are documented in `api_reference.md`: `POST /v1/devices/initialize` and all of
-`/v1/billing/*`, both behind a single shared `X-Admin-Api-Key` header.
+This matters more than usual here because `admin_portal_design.md` is a **design proposal**
+for a `/admin/api/v1/*` surface (clients CRUD, monitoring read-models, alert rules, audit log)
+that has never been built — but the backend's *actual* admin surface has evolved since that
+doc was written and now includes real login and admin-user management, just under different
+paths (`/admin/login`, `/admin/users*`, not `/admin/api/v1/auth`, `/admin/api/v1/admin-users`).
 
 | Area | Status | Notes |
 |---|---|---|
-| Auth (`/login`) | **Real**, adapted | A simple "enter the admin API key" gate, not the JWT/MFA login `admin_portal_design.md` §4 proposes — see "Auth model" below. |
+| Auth (`/login`) | **Real** | `POST /admin/login` — username/password → JWT `access_token`, sent as `Authorization: Bearer <token>` on every request thereafter. No MFA, no roles server-side (confirmed 2026-08-31). |
+| Admin users (`/admin-users`) | **Real** | `GET/POST /admin/users`, `POST /admin/users/{id}/deactivate`/`reactivate`. No `role`/`email`/`mfa_enabled` fields exist server-side — only `username`, `full_name`, `is_active`. |
 | Device init (`/branches/new`) | **Real** | Calls `POST /v1/devices/initialize` exactly per `api_reference.md`. |
 | Billing actions (suspend/reactivate/cancel/invoices/mark-paid) | **Real** | Calls `/v1/billing/*` exactly per `api_reference.md`. One mutation implementation, reused by the client detail billing tab and the billing overview page. |
-| Clients CRUD, branch list/detail read-model, monitoring, alert rules, audit log, admin users | **Mocked only** | No backend exists yet. Served by `src/mocks/handlers.ts`, shaped to match `admin_portal_design.md` §5/§7. Swapping `VITE_API_BASE_URL` to a real gateway will 404 on these until that backend is built. |
+| Clients CRUD, branch list/detail read-model, monitoring, alert rules, audit log | **Mocked only** | No backend exists yet anywhere. Served by `src/mocks/handlers.ts`'s `mockOnlyHandlers`, shaped to match `admin_portal_design.md` §5/§7. |
 
 Every `src/api/*.ts` module has a comment at the top saying which category it's in. When in
 doubt, check there before assuming a button "really" does something server-side.
+`src/mocks/handlers.ts` itself is split into `realHandlers` (mock stand-ins for the real
+endpoints above — only registered when there's no real backend to proxy to, see
+`src/mocks/browser.ts`) and `mockOnlyHandlers` (always registered).
 
-### Auth model — why it's not the JWT/MFA/RBAC flow in the design doc
+### Auth model — why it's not the JWT+MFA+RBAC flow in the design doc
 
-`admin_portal_design.md` §2/§4 proposes real per-admin accounts, TOTP MFA, and JWT sessions.
-That backend doesn't exist. Building a login/MFA UI against nothing would be UI theater, so v1
-instead uses the credential that actually works today: the admin API key, entered once,
-held in memory only (never `localStorage` — lost on a hard refresh, same principle the design
-doc wanted for a JWT), and sent as `X-Admin-Api-Key` on every request via `src/api/client.ts`.
+`admin_portal_design.md` §2/§4 proposes MFA and per-role permissions on top of JWT login. The
+real backend has JWT login but no MFA and no roles column at all — every admin user is equally
+privileged. The frontend's `/login` (`src/auth/LoginPage.tsx`) is the real thing: real
+username/password, real `POST /admin/login` call, the returned JWT held in memory only (never
+`localStorage` — lost on a hard refresh; there's no refresh-token endpoint either, so a reload
+always means a real re-login, not a silent one).
 
-The RBAC **role table** from §2 is still fully wired up in the UI (`src/auth/session-store.ts`,
-`RequireRole`, the sidebar's per-item role gating) — the login screen has an "Acting as" role
-picker — but it is **not a real security boundary**: anyone holding the shared key can already
-do everything the real backend allows, regardless of which role is picked. It exists so the
-RBAC nav/route-gating UX is ready to wire up to the real thing the moment
-`/admin/api/v1/auth` + `admin_users` ships, and so it's testable now. Don't extend this into
-"real" authorization logic — that belongs server-side.
+The RBAC **role table** from design doc §2 is still fully wired up in the UI
+(`src/auth/session-store.ts`, `RequireRole`, the sidebar's per-item role gating) via an
+"Acting as" picker on the login screen — but it is **not a real security boundary**: any
+logged-in admin can already do everything the real backend allows, regardless of which role is
+picked. It exists so the RBAC nav/route-gating UX is exercisable and testable now, ready to
+wire up to a real roles column if the backend ever adds one. Don't extend this into "real"
+authorization logic — that belongs server-side.
+
+The static `X-Admin-Api-Key` header remains the backend's real break-glass credential
+(bootstrapping the very first admin user, scripted/CI use) exactly as `admin_portal_design.md`
+§2 describes — the portal's login screen just doesn't collect it, since real per-admin login
+now exists to use instead.
 
 ## Adding a new page
 
@@ -92,7 +119,9 @@ RBAC nav/route-gating UX is ready to wire up to the real thing the moment
 ## Testing
 
 - `npm run test` — Vitest + React Testing Library, MSW mocks the network in tests via
-  `src/mocks/server.ts` (`src/test/setup.ts` wires the lifecycle).
+  `src/mocks/server.ts` (`src/test/setup.ts` wires the lifecycle). Tests always register both
+  `realHandlers` and `mockOnlyHandlers` regardless of `VITE_USE_REAL_BACKEND` — a test suite
+  must never depend on a live backend.
 - `npm run e2e` — Playwright, against `vite preview` of a production build, MSW mocks enabled.
   **Known sandbox limitation**: this repo's dev sandbox has no root access, and Playwright's
   headless Chromium needs system libraries (`libatk-1.0.so.0` etc.) that require
@@ -104,12 +133,15 @@ RBAC nav/route-gating UX is ready to wire up to the real thing the moment
   `cmc_key` never appears in the DOM even if a fixture/response accidentally included one;
   `SubscriptionActions.test.tsx` asserts suspend is blocked until a reason is typed and cancel
   is blocked until the exact confirm phrase is typed; `RequireRole.test.tsx` asserts
-  `/admin-users` redirects a non-Superadmin session by URL, not just hides the nav link.
+  `/admin-users` redirects a non-Superadmin session by URL, not just hides the nav link;
+  `LoginPage.test.tsx` covers the real login happy path, a rejected/unknown username, and an
+  unreachable-gateway error.
 
-## Known gaps vs. the original build prompt (intentional, not oversights)
+## Known gaps (intentional, not oversights)
 
-- No MFA UI, no JWT refresh-on-reload — see "Auth model" above.
-- `/admin-users`'s RBAC guard is real UI logic but not backed by real per-user identity yet.
+- No MFA UI — the real backend has none to log into.
+- `/admin-users`'s RBAC guard (Superadmin-only) is real UI logic but the underlying account
+  system has no roles at all — any admin user can already call every `/admin/users` endpoint.
 - The alert-rule "would have fired N times in the last 7 days" preview
   (`src/api/alerts.ts#useAlertRulePreview`) is a mocked, clearly-non-authoritative stand-in —
   no real backend endpoint for this exists to call.

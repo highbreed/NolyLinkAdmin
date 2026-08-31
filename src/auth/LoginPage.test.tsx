@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
 import { server } from "@/mocks/server";
 import { LoginPage } from "@/auth/LoginPage";
 import { RequireAuth } from "@/auth/RequireAuth";
 import { useSessionStore } from "@/auth/session-store";
 
 function renderApp() {
-  useSessionStore.setState({ apiKey: null, actingRole: "SUPERADMIN" });
+  useSessionStore.setState({ accessToken: null, username: null, actingRole: "SUPERADMIN" });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -34,29 +33,38 @@ describe("Login flow", () => {
     expect(screen.queryByText("Dashboard page")).not.toBeInTheDocument();
   });
 
-  it("logs in with a valid key and reaches the originally requested page", async () => {
+  it("logs in with valid credentials and reaches the originally requested page", async () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.type(screen.getByLabelText(/admin api key/i), "test-admin-key");
+    await user.type(screen.getByLabelText(/^username$/i), "amina");
+    await user.type(screen.getByLabelText(/^password$/i), "whatever-password");
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => expect(screen.getByText("Dashboard page")).toBeInTheDocument());
   });
 
-  it("shows a server error and stays on /login when the key is rejected", async () => {
-    server.use(
-      http.get("*/v1/billing/subscriptions/__login_check__", () =>
-        HttpResponse.json({ detail: "Admin access required" }, { status: 403 }),
-      ),
-    );
+  it("shows the server's error and stays on /login for an unknown/deactivated username", async () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.type(screen.getByLabelText(/admin api key/i), "wrong-key");
+    await user.type(screen.getByLabelText(/^username$/i), "no-such-user");
+    await user.type(screen.getByLabelText(/^password$/i), "whatever-password");
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/admin access required/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/invalid username or password/i);
     expect(screen.queryByText("Dashboard page")).not.toBeInTheDocument();
+  });
+
+  it("shows a generic error when the gateway itself is unreachable", async () => {
+    server.use(http.post("*/admin/login", () => HttpResponse.error()));
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.type(screen.getByLabelText(/^username$/i), "amina");
+    await user.type(screen.getByLabelText(/^password$/i), "whatever-password");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not reach the gateway/i);
   });
 });

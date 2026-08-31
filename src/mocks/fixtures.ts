@@ -309,18 +309,16 @@ export const auditLogFixture: AuditLogEntry[] = [
 export const adminUsersFixture: AdminUser[] = [
   {
     id: "au-0001",
-    email: "amina@oscu-gateway.example",
-    role: "SUPERADMIN",
-    mfa_enabled: true,
+    username: "amina",
+    full_name: "Amina",
     is_active: true,
     last_login_at: hoursAgo(2),
     created_at: daysAgo(400),
   },
   {
     id: "au-0002",
-    email: "ops@oscu-gateway.example",
-    role: "OPS",
-    mfa_enabled: false,
+    username: "ops",
+    full_name: "Ops Team",
     is_active: true,
     last_login_at: hoursAgo(5),
     created_at: daysAgo(300),

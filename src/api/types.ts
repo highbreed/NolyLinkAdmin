@@ -69,19 +69,40 @@ export interface Invoice {
   notes: string | null;
 }
 
-// ---- Proposed `/admin/api/v1/*` types (design doc §5/§7 — mocked only for now) ----------
+// ---- Real: admin portal login (POST /admin/login, /admin/users*) -----------------------
+// No MFA, no roles — confirmed against the live backend (2026-08-31). `AdminRole` below is a
+// frontend-only concept for exercising the RBAC nav/route-gating UI ahead of a real roles
+// backend; it has no server-side counterpart.
 
-export type AdminRole = "SUPERADMIN" | "OPS" | "BILLING_ADMIN" | "AUDITOR";
+export interface AdminLoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface AdminLoginResponse {
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+}
 
 export interface AdminUser {
   id: string;
-  email: string;
-  role: AdminRole;
-  mfa_enabled: boolean;
+  username: string;
+  full_name: string | null;
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
 }
+
+export interface CreateAdminUserRequest {
+  username: string;
+  password: string;
+  full_name?: string | null;
+}
+
+// ---- Frontend-only RBAC concept (design doc §2) — not backed by a real roles column ------
+
+export type AdminRole = "SUPERADMIN" | "OPS" | "BILLING_ADMIN" | "AUDITOR";
 
 export interface Client {
   id: string;

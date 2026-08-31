@@ -15,5 +15,8 @@ export default defineConfig({
     url: "http://localhost:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Force mocks-only regardless of a local .env's real-backend settings (see
+    // docs/frontend_README.md) — e2e must never depend on, or be broken by, a live backend.
+    env: { ...process.env, VITE_USE_REAL_BACKEND: "false" },
   },
 });

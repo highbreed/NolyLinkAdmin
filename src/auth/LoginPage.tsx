@@ -8,10 +8,11 @@ import { apiRequest, ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { AdminRole } from "@/api/types";
+import type { AdminLoginRequest, AdminLoginResponse, AdminRole } from "@/api/types";
 
 const schema = z.object({
-  apiKey: z.string().min(1, "Admin API key is required"),
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -26,10 +27,9 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const setSession = useSessionStore((s) => s.setSession);
-  const clearSession = useSessionStore((s) => s.clearSession);
   const [serverError, setServerError] = useState<string | null>(null);
   const [role, setRole] = useState<AdminRole>("SUPERADMIN");
-  const [checking, setChecking] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const {
     register,
@@ -39,26 +39,19 @@ export function LoginPage() {
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
-    setChecking(true);
-    // The check request must be sent WITH the typed key attached, and apiRequest() always
-    // reads the key from the session store — so the key is set optimistically first, then
-    // rolled back if the check fails. (Setting it only after a successful check would mean
-    // the check itself goes out with no key at all, silently "passing" any input.)
-    setSession(values.apiKey, role);
+    setSubmitting(true);
     try {
-      // Verify the key actually works against a real admin-gated route before entering
-      // the app, so a wrong key fails fast at login rather than on the first action taken.
-      await apiRequest("/v1/billing/subscriptions/__login_check__").catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) return; // key was accepted, just no such client
-        throw err;
+      const result = await apiRequest<AdminLoginResponse>("/admin/login", {
+        method: "POST",
+        body: values satisfies AdminLoginRequest,
       });
+      setSession(result.access_token, values.username, role);
       const from = (location.state as { from?: Location })?.from?.pathname ?? "/dashboard";
       navigate(from, { replace: true });
     } catch (err) {
-      clearSession();
       setServerError(err instanceof ApiError ? err.detail : "Could not reach the gateway.");
     } finally {
-      setChecking(false);
+      setSubmitting(false);
     }
   }
 
@@ -67,31 +60,45 @@ export function LoginPage() {
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8 shadow-sm">
         <div className="space-y-1 text-center">
           <h1 className="text-xl font-semibold">OSCU Admin Portal</h1>
-          <p className="text-sm text-muted-foreground">
-            Internal tooling — sign in with the admin API key.
-          </p>
+          <p className="text-sm text-muted-foreground">Sign in with your admin account.</p>
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="space-y-2">
-            <Label htmlFor="apiKey">Admin API key</Label>
+            <Label htmlFor="username">Username</Label>
             <Input
-              id="apiKey"
-              type="password"
-              autoComplete="current-password"
-              aria-invalid={!!errors.apiKey}
-              aria-describedby={errors.apiKey ? "apiKey-error" : undefined}
-              {...register("apiKey")}
+              id="username"
+              autoComplete="username"
+              aria-invalid={!!errors.username}
+              aria-describedby={errors.username ? "username-error" : undefined}
+              {...register("username")}
             />
-            {errors.apiKey && (
-              <p id="apiKey-error" role="alert" className="text-sm text-destructive">
-                {errors.apiKey.message}
+            {errors.username && (
+              <p id="username-error" role="alert" className="text-sm text-destructive">
+                {errors.username.message}
               </p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Acting as (demo role — see docs/frontend_README.md)</Label>
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? "password-error" : undefined}
+              {...register("password")}
+            />
+            {errors.password && (
+              <p id="password-error" role="alert" className="text-sm text-destructive">
+                {errors.password.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="role">Acting as (frontend-only — see docs/frontend_README.md)</Label>
             <select
               id="role"
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
@@ -112,8 +119,8 @@ export function LoginPage() {
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={checking}>
-            {checking ? "Signing in…" : "Sign in"}
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting ? "Signing in…" : "Sign in"}
           </Button>
         </form>
       </div>

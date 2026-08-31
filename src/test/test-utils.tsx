@@ -9,7 +9,7 @@ export function renderWithProviders(
   ui: ReactElement,
   { route = "/", role = "SUPERADMIN" }: { route?: string; role?: AdminRole } = {},
 ) {
-  useSessionStore.setState({ apiKey: "test-admin-key", actingRole: role });
+  useSessionStore.setState({ accessToken: "test-access-token", username: "test-admin", actingRole: role });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });

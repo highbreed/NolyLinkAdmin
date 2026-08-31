@@ -52,6 +52,18 @@ action never gets attributed to a specific person by mistake.
 > in the UI/types layer (so nothing has to be re-architected later) but is not currently
 > enforced by a real per-user identity — see `docs/frontend_README.md` for exactly what's
 > real vs. mocked.
+>
+> **Update (2026-08-31):** the backend has since shipped real admin-portal login —
+> `POST /admin/login` (username/password → JWT) and `POST/GET /admin/users`,
+> `POST /admin/users/{id}/deactivate`/`reactivate` — confirmed against a live instance at
+> `localhost:8010`. This is **not** the `/admin/api/v1/auth` + role-bearing `admin_users`
+> table this section describes: routes live under `/admin/*` (not `/admin/api/v1/*`), there
+> is still no `role` column (every admin user is equally privileged), and there's no MFA. The
+> frontend now uses this real login as its primary auth path (`src/auth/LoginPage.tsx`)
+> instead of the `X-Admin-Api-Key` entry screen described above — the static key remains the
+> real break-glass credential for bootstrapping the first admin user, exactly as designed
+> here, it's just no longer what the portal's login screen itself collects. The RBAC role
+> table above is still UI-only, per the 2026-08-28 note.
 
 ---
 

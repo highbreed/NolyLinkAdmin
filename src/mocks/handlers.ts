@@ -1,9 +1,10 @@
 /**
  * MSW handlers. Two categories, per docs/frontend_README.md:
- *  - REAL-shaped: /v1/devices/initialize, /v1/billing/* — mirror docs/api_reference.md's
- *    actual contract exactly, so swapping VITE_API_BASE_URL to a live gateway is a drop-in.
+ *  - REAL-shaped: /admin/login, /admin/users*, /v1/devices/initialize, /v1/billing/* — mirror
+ *    the live backend's actual contract (confirmed 2026-08-31) exactly, so these are only
+ *    registered when there's no real backend to proxy to (src/mocks/browser.ts).
  *  - PROPOSED-only: /admin/api/v1/* — mirror admin_portal_design.md §5's proposal; this
- *    backend does not exist yet anywhere.
+ *    backend does not exist yet anywhere, real or otherwise.
  */
 import { http, HttpResponse } from "msw";
 import { paginate } from "@/mocks/paginate";
@@ -25,6 +26,7 @@ import type {
   AlertRule,
   Branch,
   Client,
+  CreateAdminUserRequest,
   DeviceInitializeRequest,
   Invoice,
   MonitoringSummary,
@@ -32,21 +34,32 @@ import type {
   Subscription,
 } from "@/api/types";
 
-function requireAdminKey(request: Request): HttpResponse<{ detail: string }> | null {
-  const key = request.headers.get("X-Admin-Api-Key");
-  if (!key) {
+/** Mock stand-in for app/core/admin_auth.py's require_admin — any non-empty bearer token passes. */
+function requireAdminAuth(request: Request): HttpResponse<{ detail: string }> | null {
+  const auth = request.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ") || auth.length <= "Bearer ".length) {
     return HttpResponse.json({ detail: "Admin access required" }, { status: 403 });
   }
   return null;
 }
 
+let nextAdminUserSeq = adminUsersFixture.length + 1;
+
 let nextInvoiceSeq = invoicesFixture.length + 1;
 let nextClientSeq = clientsFixture.length + 1;
 
-export const handlers = [
+/**
+ * Real-shaped handlers — mock stand-ins for /v1/devices/initialize and /v1/billing/*, which
+ * genuinely exist on the backend. src/mocks/browser.ts drops these from the registered set
+ * whenever VITE_API_BASE_URL is configured, so those specific calls pass through MSW
+ * (onUnhandledRequest: "bypass") and hit the real gateway instead — everything else stays
+ * mocked so the rest of the app remains fully click-through-able. server.ts (tests) always
+ * registers both groups, since tests must never depend on a live backend.
+ */
+export const realHandlers = [
   // ---- Real: device provisioning -------------------------------------------------------
   http.post("*/v1/devices/initialize", async ({ request }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
 
     const body = (await request.json()) as DeviceInitializeRequest;
@@ -77,7 +90,7 @@ export const handlers = [
 
   // ---- Real: billing --------------------------------------------------------------------
   http.get("*/v1/billing/subscriptions/:clientId", ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const sub = subscriptionsFixture[params.clientId as string];
     if (!sub) return HttpResponse.json({ detail: "No subscription on file" }, { status: 404 });
@@ -85,7 +98,7 @@ export const handlers = [
   }),
 
   http.put("*/v1/billing/subscriptions/:clientId", async ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const clientId = params.clientId as string;
     if (!clientsFixture.some((c) => c.id === clientId)) {
@@ -111,7 +124,7 @@ export const handlers = [
   }),
 
   http.post("*/v1/billing/subscriptions/:clientId/suspend", async ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const clientId = params.clientId as string;
     const existing = subscriptionsFixture[clientId];
@@ -128,7 +141,7 @@ export const handlers = [
   }),
 
   http.post("*/v1/billing/subscriptions/:clientId/reactivate", ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const clientId = params.clientId as string;
     const existing = subscriptionsFixture[clientId];
@@ -144,7 +157,7 @@ export const handlers = [
   }),
 
   http.post("*/v1/billing/subscriptions/:clientId/cancel", ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const clientId = params.clientId as string;
     const existing = subscriptionsFixture[clientId];
@@ -155,14 +168,14 @@ export const handlers = [
   }),
 
   http.get("*/v1/billing/clients/:clientId/invoices", ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const clientId = params.clientId as string;
     return HttpResponse.json(invoicesFixture.filter((i) => i.client_id === clientId));
   }),
 
   http.post("*/v1/billing/clients/:clientId/invoices", async ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const clientId = params.clientId as string;
     if (!clientsFixture.some((c) => c.id === clientId)) {
@@ -192,7 +205,7 @@ export const handlers = [
   }),
 
   http.post("*/v1/billing/invoices/:invoiceId/mark-paid", async ({ request, params }) => {
-    const denied = requireAdminKey(request);
+    const denied = requireAdminAuth(request);
     if (denied) return denied;
     const invoice = invoicesFixture.find((i) => i.id === params.invoiceId);
     if (!invoice) return HttpResponse.json({ detail: "No Invoice row with that id" }, { status: 404 });
@@ -206,6 +219,70 @@ export const handlers = [
     return HttpResponse.json(invoice);
   }),
 
+  // ---- Real: admin portal login + admin user management ---------------------------------
+  http.post("*/admin/login", async ({ request }) => {
+    const body = (await request.json()) as { username: string; password: string };
+    const user = adminUsersFixture.find((u) => u.username === body.username && u.is_active);
+    // Mock accepts any password for a known, active username — this is a mock stand-in, not a
+    // real credential check (see requireAdminAuth above for the token-shaped gate every other
+    // admin route uses).
+    if (!user) {
+      return HttpResponse.json({ detail: "Invalid username or password" }, { status: 401 });
+    }
+    user.last_login_at = new Date().toISOString();
+    return HttpResponse.json({
+      access_token: `mock.${crypto.randomUUID().replace(/-/g, "")}`,
+      token_type: "bearer",
+      expires_in: 3600,
+    });
+  }),
+
+  http.get("*/admin/users", ({ request }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    return HttpResponse.json(adminUsersFixture);
+  }),
+
+  http.post("*/admin/users", async ({ request }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const body = (await request.json()) as CreateAdminUserRequest;
+    if (adminUsersFixture.some((u) => u.username === body.username)) {
+      return HttpResponse.json({ detail: `Username '${body.username}' is already taken` }, { status: 409 });
+    }
+    const user: AdminUser = {
+      id: `au-${String(nextAdminUserSeq++).padStart(4, "0")}`,
+      username: body.username,
+      full_name: body.full_name ?? null,
+      is_active: true,
+      last_login_at: null,
+      created_at: new Date().toISOString(),
+    };
+    adminUsersFixture.push(user);
+    return HttpResponse.json(user, { status: 201 });
+  }),
+
+  http.post("*/admin/users/:id/deactivate", ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const user = adminUsersFixture.find((u) => u.id === params.id);
+    if (!user) return HttpResponse.json({ detail: `No admin user with id=${params.id}` }, { status: 404 });
+    user.is_active = false;
+    return HttpResponse.json(user);
+  }),
+
+  http.post("*/admin/users/:id/reactivate", ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const user = adminUsersFixture.find((u) => u.id === params.id);
+    if (!user) return HttpResponse.json({ detail: `No admin user with id=${params.id}` }, { status: 404 });
+    user.is_active = true;
+    return HttpResponse.json(user);
+  }),
+];
+
+/** Proposed-only handlers — admin_portal_design.md §5/§7, no real backend exists yet. */
+export const mockOnlyHandlers = [
   // ---- Proposed: global invoice list (no per-tenant equivalent exists on the real backend,
   // which only has GET /v1/billing/clients/{client_id}/invoices) ------------------------------
   http.get("*/admin/api/v1/billing/invoices/:id", ({ params }) => {
@@ -460,35 +537,12 @@ export const handlers = [
       paginate(items, url, { searchFields: (e) => [e.action, e.admin_user_email ?? "break-glass key"] }),
     );
   }),
-
-  // ---- Proposed: admin users (Superadmin only) ----------------------------------------------
-  http.get("*/admin/api/v1/admin-users", () => HttpResponse.json(adminUsersFixture)),
-
-  http.post("*/admin/api/v1/admin-users", async ({ request }) => {
-    const body = (await request.json()) as { email: string; role: AdminUser["role"] };
-    const user: AdminUser = {
-      id: `au-${crypto.randomUUID().slice(0, 8)}`,
-      email: body.email,
-      role: body.role,
-      mfa_enabled: false,
-      is_active: true,
-      last_login_at: null,
-      created_at: new Date().toISOString(),
-    };
-    adminUsersFixture.push(user);
-    return HttpResponse.json(user, { status: 201 });
-  }),
-
-  http.patch("*/admin/api/v1/admin-users/:id", async ({ params, request }) => {
-    const user = adminUsersFixture.find((u) => u.id === params.id);
-    if (!user) return HttpResponse.json({ detail: "Admin user not found" }, { status: 404 });
-    const body = (await request.json()) as Partial<AdminUser>;
-    Object.assign(user, body);
-    return HttpResponse.json(user);
-  }),
-
-  http.post("*/admin/api/v1/admin-users/:id/reset-password", () => HttpResponse.json({ ok: true })),
+  // Admin user management is real now (POST /admin/login, /admin/users*) — see realHandlers
+  // above, not here.
 ];
+
+/** Full set — used by tests (src/mocks/server.ts), which must never depend on a live backend. */
+export const handlers = [...realHandlers, ...mockOnlyHandlers];
 
 function deriveStatusBucket(client: Client): string {
   const sub = client.subscription;
