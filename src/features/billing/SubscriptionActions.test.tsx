@@ -8,7 +8,7 @@ import { SubscriptionActions } from "@/features/billing/SubscriptionActions";
 import type { Subscription } from "@/api/types";
 
 const activeSubscription: Subscription = {
-  client_id: "c1",
+  customer_id: "c1",
   plan_name: "STANDARD",
   status: "ACTIVE",
   current_period_end: "2027-01-01T00:00:00Z",
@@ -28,7 +28,7 @@ describe("SubscriptionActions", () => {
       }),
     );
 
-    renderWithProviders(<SubscriptionActions clientId="c1" subscription={activeSubscription} />);
+    renderWithProviders(<SubscriptionActions customerId="c1" subscription={activeSubscription} />);
 
     await user.click(screen.getByRole("button", { name: /suspend/i }));
     const dialog = screen.getByRole("dialog");
@@ -55,7 +55,7 @@ describe("SubscriptionActions", () => {
       }),
     );
 
-    renderWithProviders(<SubscriptionActions clientId="c1" subscription={activeSubscription} />);
+    renderWithProviders(<SubscriptionActions customerId="c1" subscription={activeSubscription} />);
 
     await user.click(screen.getByRole("button", { name: /cancel subscription/i }));
     const dialog = screen.getByRole("dialog");

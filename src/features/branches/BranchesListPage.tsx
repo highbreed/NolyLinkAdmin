@@ -7,9 +7,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useDataTableState } from "@/components/data-table/useDataTableState";
 import { useBranchesList } from "@/api/branches";
-import type { Branch } from "@/api/types";
+import type { BranchAdmin } from "@/api/types";
 
-const columns: ColumnDef<Branch, unknown>[] = [
+const columns: ColumnDef<BranchAdmin, unknown>[] = [
   { id: "branch_code", header: "Branch code", accessorFn: (b) => b.branch_code },
   { id: "tin", header: "TIN", accessorFn: (b) => b.tin },
   { id: "bhf_id", header: "BHF ID", accessorFn: (b) => b.bhf_id },

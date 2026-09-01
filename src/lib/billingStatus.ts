@@ -60,33 +60,33 @@ export function deriveBillingStatus(
 }
 
 export interface ExpirationBucket {
-  clientId: string;
+  customerId: string;
   bucket: "expiring_soon" | "in_grace" | "hard_blocked";
   relevantDate: Date | null;
 }
 
 /**
- * Buckets a set of (clientId, subscription) pairs into the dashboard's proactive
+ * Buckets a set of (customerId, subscription) pairs into the dashboard's proactive
  * "upcoming expirations" groups: already-blocked, currently-in-grace, and active-but-
  * expiring-within-`withinDays`. This is the core "proactive" logic — see design doc §6.1/§8.
  */
 export function bucketExpirations(
-  subscriptions: Array<{ clientId: string; subscription: Subscription | null }>,
+  subscriptions: Array<{ customerId: string; subscription: Subscription | null }>,
   withinDays = 7,
   now: Date = new Date(),
 ): ExpirationBucket[] {
   const results: ExpirationBucket[] = [];
-  for (const { clientId, subscription } of subscriptions) {
+  for (const { customerId, subscription } of subscriptions) {
     const status = deriveBillingStatus(subscription, now);
     if (status.bucket === "BLOCKED") {
-      results.push({ clientId, bucket: "hard_blocked", relevantDate: status.relevantDate });
+      results.push({ customerId, bucket: "hard_blocked", relevantDate: status.relevantDate });
     } else if (status.bucket === "GRACE") {
-      results.push({ clientId, bucket: "in_grace", relevantDate: status.relevantDate });
+      results.push({ customerId, bucket: "in_grace", relevantDate: status.relevantDate });
     } else if (status.bucket === "ACTIVE" && status.relevantDate) {
       const daysUntil =
         (status.relevantDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000);
       if (daysUntil <= withinDays) {
-        results.push({ clientId, bucket: "expiring_soon", relevantDate: status.relevantDate });
+        results.push({ customerId, bucket: "expiring_soon", relevantDate: status.relevantDate });
       }
     }
   }

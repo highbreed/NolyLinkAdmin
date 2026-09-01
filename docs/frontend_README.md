@@ -1,9 +1,17 @@
 # OSCU Admin Portal — Frontend
 
-Internal admin dashboard for Amina's team: register clients/branches, manage billing, and
+Internal admin dashboard for Amina's team: register customers/branches, manage billing, and
 monitor KRA call health — see [`docs/admin_portal_design.md`](admin_portal_design.md) for the
 full design and [`docs/api_reference.md`](api_reference.md) for the real backend contract this
 app calls where it exists.
+
+**Customer vs. Client, read this first**: the backend split its tenant model on 2026-09-01.
+`Customer` is the paying business (owns branch access + billing) — this is what
+`admin_portal_design.md`'s "Client" pages/design describe, and what `/customers` in this app
+is. `Client` now means one OAuth2 **connector** credential integrating on a Customer's behalf
+(a prod SAP instance, a staging environment, ...) — a Customer can have several. This app's
+`/customers/:id` detail page has a Connectors tab for managing those. Don't confuse this with
+the backend's `X-Admin-Api-Key`/JWT admin auth, which is unrelated and gates the portal itself.
 
 ## Running locally
 
@@ -29,12 +37,13 @@ BACKEND_PROXY_TARGET=http://localhost:8010   # dev-server-only, never sent to th
 VITE_USE_REAL_BACKEND=true                    # tells the browser to stop mocking real-shaped calls
 ```
 
-With both set, `/admin/login`, `/admin/users*`, `/v1/devices/initialize`, and `/v1/billing/*`
-travel through the proxy to the real backend; everything else (`/admin/api/v1/*` — no real
-backend for that exists anywhere yet) stays mocked. Confirmed working end-to-end against a
-live instance at `localhost:8010` on 2026-08-31 (`curl` through the dev server's proxy for
-`/v1/health`, `/admin/login`, `/admin/users`, `/v1/billing/subscriptions/{id}` all round-
-tripped correctly).
+With both set, `/admin/login`, `/admin/users*`, `/v1/devices/initialize`, `/v1/billing/*`,
+`/v1/customers*`, `/v1/admin/branches*`, and `/v1/admin/call-logs` travel through the proxy to
+the real backend; everything else (`/admin/api/v1/*` — no real backend for that exists
+anywhere yet) stays mocked. Confirmed working end-to-end against a live instance at
+`localhost:8010` on 2026-09-01 (`curl` through the dev server's proxy, and directly against
+the backend, for every real endpoint listed below — including creating a customer and a
+connector and seeing the exact response shape this app's types expect).
 
 `VITE_API_BASE_URL` still exists for a **production** build served from a different origin
 than the API, where the deployment's own reverse proxy/CORS is expected to make cross-origin
@@ -43,18 +52,20 @@ calls work — it's not the local-dev path, which is the proxy above instead.
 ### What's real vs. mocked — read this before trusting a page's behavior
 
 This matters more than usual here because `admin_portal_design.md` is a **design proposal**
-for a `/admin/api/v1/*` surface (clients CRUD, monitoring read-models, alert rules, audit log)
+for a `/admin/api/v1/*` surface (customers CRUD, monitoring read-models, alert rules, audit log)
 that has never been built — but the backend's *actual* admin surface has evolved since that
 doc was written and now includes real login and admin-user management, just under different
 paths (`/admin/login`, `/admin/users*`, not `/admin/api/v1/auth`, `/admin/api/v1/admin-users`).
 
 | Area | Status | Notes |
 |---|---|---|
-| Auth (`/login`) | **Real** | `POST /admin/login` — username/password → JWT `access_token`, sent as `Authorization: Bearer <token>` on every request thereafter. No MFA, no roles server-side (confirmed 2026-08-31). |
+| Auth (`/login`) | **Real** | `POST /admin/login` — username/password → JWT `access_token`, sent as `Authorization: Bearer <token>` on every request thereafter. No MFA, no roles server-side. |
 | Admin users (`/admin-users`) | **Real** | `GET/POST /admin/users`, `POST /admin/users/{id}/deactivate`/`reactivate`. No `role`/`email`/`mfa_enabled` fields exist server-side — only `username`, `full_name`, `is_active`. |
+| Customers CRUD + connectors (`/customers*`) | **Real** | `POST/GET/PATCH /v1/customers`, `POST/GET /v1/customers/{id}/connectors`. No rotate/delete for connectors yet — losing a secret means creating a new connector. |
 | Device init (`/branches/new`) | **Real** | Calls `POST /v1/devices/initialize` exactly per `api_reference.md`. |
-| Billing actions (suspend/reactivate/cancel/invoices/mark-paid) | **Real** | Calls `/v1/billing/*` exactly per `api_reference.md`. One mutation implementation, reused by the client detail billing tab and the billing overview page. |
-| Clients CRUD, branch list/detail read-model, monitoring, alert rules, audit log | **Mocked only** | No backend exists yet anywhere. Served by `src/mocks/handlers.ts`'s `mockOnlyHandlers`, shaped to match `admin_portal_design.md` §5/§7. |
+| Branch/call-log read-model (`/branches`, monitoring's Activity/Recent calls) | **Real** | `GET /v1/admin/branches[/{code}]`, `GET /v1/admin/call-logs`. No server-side pagination for either — both a flat array (branches) or `limit`-capped (call-logs), paginated/filtered client-side in this app. |
+| Billing actions (suspend/reactivate/cancel/invoices/mark-paid) | **Real** | Calls `/v1/billing/*`, keyed by `customer_id`. One mutation implementation, reused by the customer detail billing tab and the billing overview page. |
+| Dashboard summary tiles, KRA-call timeseries chart, outbox, sync-lag summary, alert rules, audit log, global invoice list | **Mocked only** | No backend exists yet anywhere for these. Served by `src/mocks/handlers.ts`'s `mockOnlyHandlers`, shaped to match `admin_portal_design.md` §5/§7. |
 
 Every `src/api/*.ts` module has a comment at the top saying which category it's in. When in
 doubt, check there before assuming a button "really" does something server-side.
@@ -72,12 +83,13 @@ username/password, real `POST /admin/login` call, the returned JWT held in memor
 always means a real re-login, not a silent one).
 
 The RBAC **role table** from design doc §2 is still fully wired up in the UI
-(`src/auth/session-store.ts`, `RequireRole`, the sidebar's per-item role gating) via an
-"Acting as" picker on the login screen — but it is **not a real security boundary**: any
-logged-in admin can already do everything the real backend allows, regardless of which role is
-picked. It exists so the RBAC nav/route-gating UX is exercisable and testable now, ready to
-wire up to a real roles column if the backend ever adds one. Don't extend this into "real"
-authorization logic — that belongs server-side.
+(`src/auth/session-store.ts`, `RequireRole`, the sidebar's per-item role gating) — every
+session defaults to `SUPERADMIN` (there's no picker on the login screen; the backend has no
+per-user roles to pick between) — but it is **not a real security boundary**: any logged-in
+admin can already do everything the real backend allows. It exists so the RBAC nav/route-
+gating UX is exercisable and testable now, ready to wire up to a real roles column if the
+backend ever adds one. Don't extend this into "real" authorization logic — that belongs
+server-side.
 
 The static `X-Admin-Api-Key` header remains the backend's real break-glass credential
 (bootstrapping the very first admin user, scripted/CI use) exactly as `admin_portal_design.md`
@@ -88,7 +100,7 @@ now exists to use instead.
 
 1. Add the feature folder under `src/features/<name>/` with its page component(s).
 2. Add typed API functions + TanStack Query hooks in `src/api/<resource>.ts` (mirror the
-   pattern in `src/api/clients.ts` — no inline `any`-typed `fetch` calls in components).
+   pattern in `src/api/customers.ts` — no inline `any`-typed `fetch` calls in components).
 3. Add MSW handlers in `src/mocks/handlers.ts` if the backend doesn't exist yet, using fixtures
    from `src/mocks/fixtures.ts`.
 4. Register the route in `src/routes/router.tsx`, wrapped in `wrap(<YourPage />)` for the
@@ -111,10 +123,10 @@ now exists to use instead.
 - **`ConfirmDialog`** (`src/components/ui/ConfirmDialog.tsx`) — every destructive/high-stakes
   action goes through this: `requireReason` for suspend-style actions, `confirmPhrase` for
   cancel-style ones. Suspend/reactivate/cancel specifically live in ONE place
-  (`src/features/billing/SubscriptionActions.tsx`) reused by both the client detail billing tab
+  (`src/features/billing/SubscriptionActions.tsx`) reused by both the customer detail billing tab
   and the billing overview page — don't add a second copy of that mutation logic.
 - **`AuditLogTable`** (`src/features/audit-log/AuditLogTable.tsx`) — reused as-is by both the
-  global `/audit-log` page and the per-client Audit tab (scoped via `targetId`).
+  global `/audit-log` page and the per-customer Audit tab (scoped via `targetId`).
 
 ## Testing
 
@@ -130,18 +142,27 @@ now exists to use instead.
   GitHub Actions' `ubuntu-latest` runner has root, so `npx playwright install --with-deps
   chromium` in `.github/workflows/ci.yml` installs cleanly and the suite runs there.
 - Regression-style tests worth knowing about: `BranchDetailPage.test.tsx` asserts a raw
-  `cmc_key` never appears in the DOM even if a fixture/response accidentally included one;
-  `SubscriptionActions.test.tsx` asserts suspend is blocked until a reason is typed and cancel
-  is blocked until the exact confirm phrase is typed; `RequireRole.test.tsx` asserts
-  `/admin-users` redirects a non-Superadmin session by URL, not just hides the nav link;
-  `LoginPage.test.tsx` covers the real login happy path, a rejected/unknown username, and an
-  unreachable-gateway error.
+  `cmc_key` never appears in the DOM even if a response accidentally included one (the real
+  branch read-model has no cmc_key-shaped field at all — there's nothing to mask, but the page
+  must still never render it if a bug ever put it there); `ConnectorsTab.test.tsx` asserts the
+  connector secret is shown exactly once and nowhere else persists it; `SubscriptionActions
+  .test.tsx` asserts suspend is blocked until a reason is typed and cancel is blocked until the
+  exact confirm phrase is typed; `RequireRole.test.tsx` asserts `/admin-users` redirects a
+  non-Superadmin session by URL, not just hides the nav link; `LoginPage.test.tsx` covers the
+  real login happy path, a rejected/unknown username, and an unreachable-gateway error.
 
 ## Known gaps (intentional, not oversights)
 
 - No MFA UI — the real backend has none to log into.
 - `/admin-users`'s RBAC guard (Superadmin-only) is real UI logic but the underlying account
   system has no roles at all — any admin user can already call every `/admin/users` endpoint.
+- No rotate/delete for connectors — the real backend doesn't have those endpoints yet
+  (`app/services/customer_service.py`'s own docstring flags this); a lost secret means
+  creating a new connector, not recovering the old one.
+- `CustomersListPage`'s status filter/sort and the billing overview's expirations list fetch
+  every customer's subscription individually (`useQueries`) since the real customer list has
+  no billing fields — fine at the scale an admin tool deals with, would need a real aggregate
+  endpoint to stay reasonable at real scale.
 - The alert-rule "would have fired N times in the last 7 days" preview
   (`src/api/alerts.ts#useAlertRulePreview`) is a mocked, clearly-non-authoritative stand-in —
   no real backend endpoint for this exists to call.

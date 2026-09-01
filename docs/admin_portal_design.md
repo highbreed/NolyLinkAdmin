@@ -145,6 +145,16 @@ session-authenticated equivalents instead, described here).
 
 ### 5.2 Client management — the gap this portal closes first
 
+> **Update (2026-09-01):** the backend implemented this closely, but not identically — it
+> split what this section calls "Client" into `Customer` (the paying business — owns
+> `allowed_branch_ids`/billing, exactly what's described below) and `Client` (now an OAuth2
+> **connector** credential belonging to a Customer via `customer_id`; a Customer can have
+> several). Real routes are `/v1/customers` and `/v1/customers/{id}/connectors`, not
+> `/admin/api/v1/clients*`. There is no rotate-secret or attach-branch-by-itself endpoint for
+> connectors — creating a new connector is the only way to replace a lost secret, and
+> attaching a branch is done via `PATCH /v1/customers/{id}` with the full new `branch_codes`
+> list (not a dedicated attach endpoint). See `docs/frontend_README.md` for the full mapping.
+
 | Endpoint | Purpose |
 |---|---|
 | `POST /admin/api/v1/clients` | **Replaces the direct SQL insert.** Creates the `clients` row, generates `client_id`/`client_secret` server-side (secret shown **once** in the response, never retrievable again — same principle as the existing raw-secret handoff, just no longer manual), takes a name and an initial `allowed_branch_ids` list |

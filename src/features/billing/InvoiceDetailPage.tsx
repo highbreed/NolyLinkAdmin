@@ -27,9 +27,9 @@ export function InvoiceDetailPage() {
         title={invoice.id}
         description={
           <>
-            Client:{" "}
-            <Link to={`/clients/${invoice.client_id}`} className="text-primary hover:underline">
-              {invoice.client_id}
+            Customer:{" "}
+            <Link to={`/customers/${invoice.customer_id}`} className="text-primary hover:underline">
+              {invoice.customer_id}
             </Link>
           </>
         }

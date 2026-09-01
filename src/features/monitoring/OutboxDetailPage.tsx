@@ -36,11 +36,11 @@ export function OutboxDetailPage() {
               <dd>{item.branch_code ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">Client</dt>
+              <dt className="text-muted-foreground">Customer</dt>
               <dd>
-                {item.client_id ? (
-                  <Link to={`/clients/${item.client_id}`} className="text-primary hover:underline">
-                    {item.client_name ?? item.client_id}
+                {item.customer_id ? (
+                  <Link to={`/customers/${item.customer_id}`} className="text-primary hover:underline">
+                    {item.customer_name ?? item.customer_id}
                   </Link>
                 ) : (
                   "—"

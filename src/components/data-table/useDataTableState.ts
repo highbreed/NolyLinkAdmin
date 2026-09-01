@@ -3,7 +3,7 @@
  * URL's query string via React Router — so every table's state is a real query param, not
  * client-side-only state, and every server-side query hook can derive its TanStack Query key
  * directly from `useSearchParams()`. This is also what makes the dashboard's "click through to
- * a pre-filtered view" acceptance criterion work: a tile just links to `/clients?status=...`.
+ * a pre-filtered view" acceptance criterion work: a tile just links to `/customers?status=...`.
  */
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";

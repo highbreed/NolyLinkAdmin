@@ -1,21 +1,25 @@
 /**
  * Real backend endpoints (docs/api_reference.md "Admin — Billing") — these call the actual
- * `/v1/billing/*` routes under `X-Admin-Api-Key`, unlike most of src/api/*.ts. Only
- * `useBillingOverview` below is mocked (no system-wide aggregate endpoint exists yet; see
- * admin_portal_design.md §5.4's proposed `/admin/api/v1/billing/overview`).
+ * `/v1/billing/*` routes under `X-Admin-Api-Key`/admin JWT, unlike most of src/api/*.ts.
+ * Keyed by `customer_id`, not `client_id`, since the 2026-09-01 Customer/Client(connector)
+ * split moved billing onto the paying business (Customer), not any one of its connectors.
  *
- * Suspend/reactivate/cancel are each defined ONCE here and reused by both the client detail
+ * `useInvoice`, `useBillingOverview`, and `useAllInvoices` are mocked-only: the real backend
+ * has no single-invoice lookup or global cross-customer invoice list, only
+ * `GET /v1/billing/customers/{id}/invoices` (per-customer, wrapped by `useCustomerInvoices`).
+ *
+ * Suspend/reactivate/cancel are each defined ONCE here and reused by both the customer detail
  * billing tab and the billing overview page — no duplicated mutation logic anywhere else.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import type { BillingOverview, Invoice, Page, Subscription } from "@/api/types";
 
-export function useSubscription(clientId: string | undefined) {
+export function useSubscription(customerId: string | undefined) {
   return useQuery({
-    queryKey: ["subscription", clientId],
-    queryFn: () => apiRequest<Subscription>(`/v1/billing/subscriptions/${clientId}`),
-    enabled: !!clientId,
+    queryKey: ["subscription", customerId],
+    queryFn: () => apiRequest<Subscription>(`/v1/billing/subscriptions/${customerId}`),
+    enabled: !!customerId,
     retry: (failureCount, error) => {
       // 404 = genuinely no subscription on file yet — not worth retrying.
       if ((error as { status?: number })?.status === 404) return false;
@@ -24,68 +28,68 @@ export function useSubscription(clientId: string | undefined) {
   });
 }
 
-export function useUpsertSubscription(clientId: string) {
+export function useUpsertSubscription(customerId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { plan_name: string; current_period_end: string; grace_period_days?: number | null }) =>
-      apiRequest<Subscription>(`/v1/billing/subscriptions/${clientId}`, { method: "PUT", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["subscription", clientId] }),
+      apiRequest<Subscription>(`/v1/billing/subscriptions/${customerId}`, { method: "PUT", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["subscription", customerId] }),
   });
 }
 
-export function useSuspendSubscription(clientId: string) {
+export function useSuspendSubscription(customerId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reason: string) =>
-      apiRequest<Subscription>(`/v1/billing/subscriptions/${clientId}/suspend`, {
+      apiRequest<Subscription>(`/v1/billing/subscriptions/${customerId}/suspend`, {
         method: "POST",
         body: { reason },
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["subscription", clientId] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["subscription", customerId] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
     },
   });
 }
 
-export function useReactivateSubscription(clientId: string) {
+export function useReactivateSubscription(customerId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiRequest<Subscription>(`/v1/billing/subscriptions/${clientId}/reactivate`, { method: "POST" }),
+      apiRequest<Subscription>(`/v1/billing/subscriptions/${customerId}/reactivate`, { method: "POST" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["subscription", clientId] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["subscription", customerId] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
     },
   });
 }
 
-export function useCancelSubscription(clientId: string) {
+export function useCancelSubscription(customerId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiRequest<Subscription>(`/v1/billing/subscriptions/${clientId}/cancel`, { method: "POST" }),
+      apiRequest<Subscription>(`/v1/billing/subscriptions/${customerId}/cancel`, { method: "POST" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["subscription", clientId] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["subscription", customerId] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
     },
   });
 }
 
-export function useClientInvoices(clientId: string | undefined) {
+export function useCustomerInvoices(customerId: string | undefined) {
   return useQuery({
-    queryKey: ["invoices", clientId],
-    queryFn: () => apiRequest<Invoice[]>(`/v1/billing/clients/${clientId}/invoices`),
-    enabled: !!clientId,
+    queryKey: ["invoices", customerId],
+    queryFn: () => apiRequest<Invoice[]>(`/v1/billing/customers/${customerId}/invoices`),
+    enabled: !!customerId,
   });
 }
 
-export function useCreateInvoice(clientId: string) {
+export function useCreateInvoice(customerId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { period_start: string; period_end: string; amount: string; currency?: string; notes?: string }) =>
-      apiRequest<Invoice>(`/v1/billing/clients/${clientId}/invoices`, { method: "POST", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices", clientId] }),
+      apiRequest<Invoice>(`/v1/billing/customers/${customerId}/invoices`, { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices", customerId] }),
   });
 }
 

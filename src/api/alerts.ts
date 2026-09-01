@@ -28,7 +28,7 @@ export function useUpdateAlertRule(id: string) {
   });
 }
 
-export function useAlertRulePreview(input: Pick<AlertRuleInput, "metric" | "condition" | "threshold" | "scope_client_id" | "scope_branch_code"> | null) {
+export function useAlertRulePreview(input: Pick<AlertRuleInput, "metric" | "condition" | "threshold" | "scope_customer_id" | "scope_branch_code"> | null) {
   return useQuery({
     queryKey: ["alert-rule-preview", input],
     queryFn: () =>
@@ -37,7 +37,7 @@ export function useAlertRulePreview(input: Pick<AlertRuleInput, "metric" | "cond
           metric: input?.metric,
           condition: input?.condition,
           threshold: input?.threshold,
-          scope_client_id: input?.scope_client_id ?? undefined,
+          scope_customer_id: input?.scope_customer_id ?? undefined,
           scope_branch_code: input?.scope_branch_code ?? undefined,
         },
       }),

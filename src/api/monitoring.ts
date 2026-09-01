@@ -1,8 +1,14 @@
-/** Mocked-only — admin_portal_design.md §5.5, no real backend yet. */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+/**
+ * `useAdminCallLogs` calls the REAL `GET /v1/admin/call-logs` (confirmed against the live
+ * backend, 2026-09-01) — merged OSCU/VSCU log viewer, `limit`-capped (most recent N, newest
+ * first), no true server-side pagination (see the endpoint's own docstring). Everything else
+ * in this file (summary tiles, the timeseries chart, outbox, sync-status) is mocked-only —
+ * admin_portal_design.md §5.5, no real backend for those yet.
+ */
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import type {
-  KraCallLogEntry,
+  AdminCallLogEntry,
   KraCallTimeseriesPoint,
   MonitoringSummary,
   OutboxItem,
@@ -19,30 +25,49 @@ export function useMonitoringSummary() {
   });
 }
 
-export interface KraCallListParams {
-  page: number;
-  pageSize: number;
-  sort: SortParam | null;
-  search: string;
-  resultCd?: string;
+export interface AdminCallLogParams {
   branchCode?: string;
+  protocol?: "OSCU" | "VSCU";
+  resultCd?: string;
+  limit?: number;
 }
 
-export function useKraCallsList(params: KraCallListParams) {
+export function useAdminCallLogs(params: AdminCallLogParams) {
   return useQuery({
-    queryKey: ["kra-calls", params],
+    queryKey: ["call-logs", params],
     queryFn: () =>
-      apiRequest<Page<KraCallLogEntry>>("/admin/api/v1/monitoring/kra-calls", {
+      apiRequest<AdminCallLogEntry[]>("/v1/admin/call-logs", {
         query: {
-          page: params.page,
-          page_size: params.pageSize,
-          sort: params.sort ? `${params.sort.desc ? "-" : ""}${params.sort.id}` : undefined,
-          q: params.search || undefined,
-          result_cd: params.resultCd,
           branch_code: params.branchCode,
+          protocol: params.protocol,
+          result_cd: params.resultCd,
+          limit: params.limit ?? 50,
         },
       }),
   });
+}
+
+/**
+ * The real call-logs endpoint only filters by a single `branch_code`, not a customer — this
+ * fans out one request per branch a customer owns and merges the results, for the customer
+ * detail page's Activity tab. Fine for the small branch counts an admin tool deals with; would
+ * need a real customer-scoped endpoint to stay reasonable at real scale.
+ */
+export function useCustomerActivity(branchCodes: string[], limitPerBranch = 10) {
+  const queries = useQueries({
+    queries: branchCodes.map((branchCode) => ({
+      queryKey: ["call-logs", "branch", branchCode, limitPerBranch],
+      queryFn: () =>
+        apiRequest<AdminCallLogEntry[]>("/v1/admin/call-logs", {
+          query: { branch_code: branchCode, limit: limitPerBranch },
+        }),
+    })),
+  });
+  const isLoading = queries.some((q) => q.isLoading);
+  const entries = queries
+    .flatMap((q) => q.data ?? [])
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return { entries, isLoading };
 }
 
 export function useKraCallsTimeseries(rangeHours: number) {

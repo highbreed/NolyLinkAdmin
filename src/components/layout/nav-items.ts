@@ -26,8 +26,8 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["SUPERADMIN", "OPS", "BILLING_ADMIN", "AUDITOR"],
   },
   {
-    label: "Clients",
-    to: "/clients",
+    label: "Customers",
+    to: "/customers",
     icon: Users,
     roles: ["SUPERADMIN", "OPS", "BILLING_ADMIN", "AUDITOR"],
   },

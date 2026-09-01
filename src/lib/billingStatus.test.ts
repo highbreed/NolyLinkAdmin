@@ -6,7 +6,7 @@ const NOW = new Date("2026-08-31T00:00:00Z");
 
 function makeSub(overrides: Partial<Subscription>): Subscription {
   return {
-    client_id: "c1",
+    customer_id: "c1",
     plan_name: "STANDARD",
     status: "ACTIVE",
     current_period_end: "2026-09-30T00:00:00Z",
@@ -59,23 +59,23 @@ describe("deriveBillingStatus", () => {
 describe("bucketExpirations", () => {
   it("buckets hard-blocked, in-grace, and expiring-soon clients, sorted by urgency", () => {
     const input = [
-      { clientId: "blocked", subscription: makeSub({ current_period_end: "2026-08-01T00:00:00Z", grace_period_days: 7 }) },
-      { clientId: "grace", subscription: makeSub({ current_period_end: "2026-08-29T00:00:00Z", grace_period_days: 7 }) },
-      { clientId: "expiring", subscription: makeSub({ current_period_end: "2026-09-03T00:00:00Z" }) },
-      { clientId: "far-future", subscription: makeSub({ current_period_end: "2027-01-01T00:00:00Z" }) },
-      { clientId: "no-sub", subscription: null },
+      { customerId: "blocked", subscription: makeSub({ current_period_end: "2026-08-01T00:00:00Z", grace_period_days: 7 }) },
+      { customerId: "grace", subscription: makeSub({ current_period_end: "2026-08-29T00:00:00Z", grace_period_days: 7 }) },
+      { customerId: "expiring", subscription: makeSub({ current_period_end: "2026-09-03T00:00:00Z" }) },
+      { customerId: "far-future", subscription: makeSub({ current_period_end: "2027-01-01T00:00:00Z" }) },
+      { customerId: "no-sub", subscription: null },
     ];
 
     const result = bucketExpirations(input, 7, NOW);
 
-    expect(result.map((r) => r.clientId)).toEqual(["blocked", "grace", "expiring"]);
+    expect(result.map((r) => r.customerId)).toEqual(["blocked", "grace", "expiring"]);
     expect(result[0].bucket).toBe("hard_blocked");
     expect(result[1].bucket).toBe("in_grace");
     expect(result[2].bucket).toBe("expiring_soon");
   });
 
   it("excludes clients expiring further out than the window", () => {
-    const input = [{ clientId: "later", subscription: makeSub({ current_period_end: "2026-12-01T00:00:00Z" }) }];
+    const input = [{ customerId: "later", subscription: makeSub({ current_period_end: "2026-12-01T00:00:00Z" }) }];
     expect(bucketExpirations(input, 7, NOW)).toEqual([]);
   });
 });

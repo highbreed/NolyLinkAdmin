@@ -2,11 +2,12 @@ import { test, expect } from "@playwright/test";
 
 /**
  * The one critical end-to-end path from the build's acceptance criteria: login → dashboard →
- * create client → view secret-once panel → suspend client → see blocked banner → reactivate.
- * Runs against the production build served by `vite preview`, with MSW mocks enabled (the
- * default — see docs/frontend_README.md), so it never depends on a live backend.
+ * register customer → create connector → view secret-once panel → suspend customer → see
+ * blocked banner → reactivate. Runs against the production build served by `vite preview`,
+ * with MSW mocks enabled (the default — see docs/frontend_README.md), so it never depends on
+ * a live backend.
  */
-test("login, register a client, suspend it, see the blocked banner, then reactivate", async ({ page }) => {
+test("login, register a customer, create a connector, suspend, see the blocked banner, then reactivate", async ({ page }) => {
   await page.goto("/login");
 
   await page.getByLabel(/^username$/i).fill("amina");
@@ -16,26 +17,31 @@ test("login, register a client, suspend it, see the blocked banner, then reactiv
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Clients" }).click();
-  await expect(page).toHaveURL(/\/clients$/);
-  await page.getByRole("button", { name: /register client/i }).click();
+  await page.getByRole("link", { name: "Customers" }).click();
+  await expect(page).toHaveURL(/\/customers$/);
+  await page.getByRole("button", { name: /register customer/i }).click();
 
-  await page.getByLabel(/client name/i).fill("Playwright E2E Client");
-  await page.getByRole("button", { name: /^create client$/i }).click();
+  await page.getByLabel(/customer name/i).fill("Playwright E2E Customer");
+  await page.getByRole("button", { name: /^register customer$/i }).click();
 
-  await expect(page.getByText(/copy this client secret now/i)).toBeVisible();
+  // Customer creation itself returns no secret — that only happens when a connector is
+  // created under it, on the Connectors tab this navigates to next.
+  await expect(page).toHaveURL(/\/customers\/.+\?tab=connectors/);
+  await expect(page.getByText("Playwright E2E Customer")).toBeVisible();
+
+  await page.getByRole("button", { name: /new connector/i }).click();
+  await page.getByLabel(/^name$/i).fill("Playwright connector");
+  await page.getByRole("button", { name: /^create connector$/i }).click();
+
+  await expect(page.getByText(/copy this connector secret now/i)).toBeVisible();
   const secretText = await page.getByTestId("client-secret-value").textContent();
   expect(secretText).toMatch(/^secret_/);
 
-  await page.getByRole("button", { name: /go to client/i }).click();
-  await expect(page).toHaveURL(/\/clients\/.+/);
-  await expect(page.getByText("Playwright E2E Client")).toBeVisible();
-
-  // A brand-new client has no subscription yet, so the suspend flow below targets the fixed
-  // fixture client instead, which already has an ACTIVE subscription to suspend. Navigated to
+  // A brand-new customer has no subscription yet, so the suspend flow below targets the fixed
+  // fixture customer instead, which already has an ACTIVE subscription to suspend. Navigated to
   // via in-app link click (not page.goto) since the session is held in memory only and would
   // be lost on a hard page load — by design, see docs/frontend_README.md.
-  await page.getByRole("link", { name: "Clients" }).click();
+  await page.getByRole("link", { name: "Customers" }).click();
   await page.getByText("Jitihada Traders Ltd").click();
   await expect(page.getByText("Jitihada Traders Ltd")).toBeVisible();
 

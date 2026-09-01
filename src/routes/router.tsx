@@ -6,9 +6,9 @@ import { RequireAuth } from "@/auth/RequireAuth";
 import { RequireRole } from "@/auth/RequireRole";
 import { LoginPage } from "@/auth/LoginPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
-import { ClientsListPage } from "@/features/clients/ClientsListPage";
-import { ClientNewPage } from "@/features/clients/ClientNewPage";
-import { ClientDetailPage } from "@/features/clients/ClientDetailPage";
+import { CustomersListPage } from "@/features/customers/CustomersListPage";
+import { CustomerNewPage } from "@/features/customers/CustomerNewPage";
+import { CustomerDetailPage } from "@/features/customers/CustomerDetailPage";
 import { BranchesListPage } from "@/features/branches/BranchesListPage";
 import { BranchNewPage } from "@/features/branches/BranchNewPage";
 import { BranchDetailPage } from "@/features/branches/BranchDetailPage";
@@ -34,9 +34,9 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: "dashboard", element: wrap(<DashboardPage />) },
-          { path: "clients", element: wrap(<ClientsListPage />) },
-          { path: "clients/new", element: wrap(<ClientNewPage />) },
-          { path: "clients/:id", element: wrap(<ClientDetailPage />) },
+          { path: "customers", element: wrap(<CustomersListPage />) },
+          { path: "customers/new", element: wrap(<CustomerNewPage />) },
+          { path: "customers/:id", element: wrap(<CustomerDetailPage />) },
           { path: "branches", element: wrap(<BranchesListPage />) },
           { path: "branches/new", element: wrap(<BranchNewPage />) },
           { path: "branches/:branchCode", element: wrap(<BranchDetailPage />) },

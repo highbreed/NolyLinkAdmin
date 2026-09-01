@@ -1,16 +1,14 @@
 import { useParams } from "react-router-dom";
-import { AlertOctagon } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { useBranch, useBranchCallLog, useBranchSyncState } from "@/api/branches";
+import { useBranch, useBranchCallLog } from "@/api/branches";
 import { formatDate, formatDateTime, formatRelativeToNow } from "@/lib/format";
 
 export function BranchDetailPage() {
   const { branchCode } = useParams<{ branchCode: string }>();
   const branchQuery = useBranch(branchCode);
   const callsQuery = useBranchCallLog(branchCode);
-  const syncQuery = useBranchSyncState(branchCode);
 
   if (branchQuery.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (branchQuery.isError || !branchQuery.data) return <p className="text-sm text-destructive">Branch not found.</p>;
@@ -25,21 +23,6 @@ export function BranchDetailPage() {
         actions={<StatusBadge status={branch.status} />}
       />
 
-      {branch.incident_no_local_record && (
-        <div role="alert" className="flex items-start gap-3 rounded-lg border-2 border-status-blocked bg-status-blocked/5 p-4">
-          <AlertOctagon className="mt-0.5 h-5 w-5 shrink-0 text-status-blocked" />
-          <div>
-            <p className="font-semibold text-status-blocked">
-              KRA reports this device already installed (902) with no local record
-            </p>
-            <p className="text-sm">
-              This needs manual escalation to ops — the original cmcKey can't be recovered from
-              KRA, so there is no self-service re-initialize action here by design.
-            </p>
-          </div>
-        </div>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle>Device metadata</CardTitle>
@@ -47,65 +30,85 @@ export function BranchDetailPage() {
         <CardContent>
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-muted-foreground">DVC ID</dt>
-              <dd className="font-mono">{branch.dvc_id ?? "—"}</dd>
+              <dt className="text-muted-foreground">Branch id</dt>
+              <dd className="font-mono">{branch.id}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">SDC ID</dt>
-              <dd className="font-mono">{branch.sdc_id ?? "—"}</dd>
+              <dt className="text-muted-foreground">Device type</dt>
+              <dd>{branch.device_type}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">MRC No</dt>
-              <dd className="font-mono">{branch.mrc_no ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">cmc_key (masked)</dt>
-              <dd className="font-mono" data-testid="cmc-key-fingerprint">
-                {branch.cmc_key_fingerprint ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Last rotated</dt>
-              <dd>{formatDate(branch.cmc_key_last_rotated_at)}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Base URL override</dt>
-              <dd className="font-mono">{branch.kra_base_url_override ?? "default"}</dd>
+              <dt className="text-muted-foreground">Registered</dt>
+              <dd>{formatDate(branch.created_at)}</dd>
             </div>
           </dl>
+          <p className="mt-3 text-xs text-muted-foreground">
+            cmc_key is never exposed by any endpoint, including this one — there is no
+            fingerprint or rotation timestamp field for it in the real branch read-model.
+          </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Sync state per resource</CardTitle>
+          <CardTitle>VSCU health</CardTitle>
         </CardHeader>
         <CardContent>
-          {syncQuery.data?.length ? (
-            <ul className="space-y-2 text-sm">
-              {syncQuery.data.map((row) => (
-                <li key={row.resource} className="flex items-center justify-between border-b pb-2 last:border-0">
-                  <span>{row.resource}</span>
-                  <span className="text-muted-foreground">last synced {formatRelativeToNow(row.last_req_dt)}</span>
-                </li>
-              ))}
-            </ul>
+          {branch.vscu ? (
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground">Base URL</dt>
+                <dd className="font-mono">{branch.vscu.base_url}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Initialized</dt>
+                <dd>{formatDate(branch.vscu.initialized_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Last successful call</dt>
+                <dd>{formatRelativeToNow(branch.vscu.last_successful_call_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Last sequence sync</dt>
+                <dd>{formatRelativeToNow(branch.vscu.last_sequence_sync_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Last known invoice no.</dt>
+                <dd>{branch.vscu.last_known_invc_no ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Last known sale receipt no.</dt>
+                <dd>{branch.vscu.last_known_sale_rcpt_no ?? "—"}</dd>
+              </div>
+              {branch.vscu.last_error && (
+                <div className="col-span-full">
+                  <dt className="text-muted-foreground">Last error</dt>
+                  <dd className="font-mono text-xs text-status-blocked">{branch.vscu.last_error}</dd>
+                </div>
+              )}
+            </dl>
           ) : (
-            <p className="text-sm text-muted-foreground">No sync state recorded.</p>
+            <p className="text-sm text-muted-foreground">
+              {branch.device_type === "OSCU"
+                ? "OSCU branches have no VSCU device-state tracking."
+                : "No VSCU device state recorded yet."}
+            </p>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent KRA calls</CardTitle>
+          <CardTitle>Recent calls</CardTitle>
         </CardHeader>
         <CardContent>
-          {callsQuery.data?.items.length ? (
+          {callsQuery.data?.length ? (
             <ul className="space-y-2 text-sm">
-              {callsQuery.data.items.map((call) => (
-                <li key={call.id} className="flex items-center justify-between border-b pb-2 last:border-0">
-                  <span>{call.endpoint}</span>
+              {callsQuery.data.map((call) => (
+                <li key={`${call.protocol}-${call.id}`} className="flex items-center justify-between border-b pb-2 last:border-0">
+                  <span>
+                    [{call.protocol}] {call.endpoint}
+                  </span>
                   <span className="text-muted-foreground">
                     {call.result_cd} · {formatDateTime(call.created_at)}
                   </span>

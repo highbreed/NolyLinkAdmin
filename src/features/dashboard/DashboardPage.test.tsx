@@ -11,7 +11,7 @@ const summary: MonitoringSummary = {
   kra_call_success_rate_24h: 0.88,
   outbox_counts: { PENDING: 3, RETRYING: 1, FAILED: 5, SENT: 40, CANCELLED: 0 },
   stale_branch_count: 1,
-  blocked_client_count: 2,
+  blocked_customer_count: 2,
   worst_sync_offender: {
     branch_code: "MOMBASA-PORT",
     resource: "stock_moves",

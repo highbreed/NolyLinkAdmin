@@ -10,21 +10,22 @@ import {
 import type { Subscription } from "@/api/types";
 
 /**
- * The ONE place suspend/reactivate/cancel are wired up — reused by both the client detail
+ * The ONE place suspend/reactivate/cancel are wired up — reused by both the customer detail
  * billing tab and the billing overview page, so there is never a second copy of this mutation
- * logic (acceptance criteria: same mutation used everywhere).
+ * logic (acceptance criteria: same mutation used everywhere). Keyed by customer_id since the
+ * 2026-09-01 split moved billing onto the paying Customer, not any one Client connector.
  */
 export function SubscriptionActions({
-  clientId,
+  customerId,
   subscription,
 }: {
-  clientId: string;
+  customerId: string;
   subscription: Subscription | null | undefined;
 }) {
   const [dialog, setDialog] = useState<"suspend" | "reactivate" | "cancel" | null>(null);
-  const suspend = useSuspendSubscription(clientId);
-  const reactivate = useReactivateSubscription(clientId);
-  const cancel = useCancelSubscription(clientId);
+  const suspend = useSuspendSubscription(customerId);
+  const reactivate = useReactivateSubscription(customerId);
+  const cancel = useCancelSubscription(customerId);
 
   const isSuspended = subscription?.status === "SUSPENDED";
   const isCancelled = subscription?.status === "CANCELLED";
@@ -62,15 +63,15 @@ export function SubscriptionActions({
       <ConfirmDialog
         open={dialog === "suspend"}
         onOpenChange={(open) => !open && setDialog(null)}
-        title="Suspend this client?"
-        description="This immediately blocks every client-bearer API call, regardless of paid-through date."
+        title="Suspend this customer?"
+        description="This immediately blocks every connector's API call, regardless of paid-through date."
         requireReason
         variant="destructive"
         confirmLabel="Suspend"
         isPending={suspend.isPending}
         onConfirm={(reason) =>
           suspend.mutate(reason!, {
-            onSuccess: () => handleSuccess("Client suspended."),
+            onSuccess: () => handleSuccess("Customer suspended."),
             onError: handleError,
           })
         }
@@ -79,13 +80,13 @@ export function SubscriptionActions({
       <ConfirmDialog
         open={dialog === "reactivate"}
         onOpenChange={(open) => !open && setDialog(null)}
-        title="Reactivate this client?"
+        title="Reactivate this customer?"
         description="Clears the suspension. This is the only thing that lifts it — renewing the period does not."
         confirmLabel="Reactivate"
         isPending={reactivate.isPending}
         onConfirm={() =>
           reactivate.mutate(undefined, {
-            onSuccess: () => handleSuccess("Client reactivated."),
+            onSuccess: () => handleSuccess("Customer reactivated."),
             onError: handleError,
           })
         }

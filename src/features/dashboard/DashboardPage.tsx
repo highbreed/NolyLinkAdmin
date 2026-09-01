@@ -114,7 +114,7 @@ export function DashboardPage() {
                   ([bucket, count]) => (
                     <Link
                       key={bucket}
-                      to={`/clients?status=${bucket}`}
+                      to={`/customers?status=${bucket}`}
                       className="flex items-center gap-2 rounded-md border px-3 py-2 hover:bg-accent"
                       data-testid={`billing-tile-${bucket}`}
                     >

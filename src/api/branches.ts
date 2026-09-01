@@ -1,62 +1,48 @@
 /**
- * `useInitializeDevice` calls the REAL `POST /v1/devices/initialize` (docs/api_reference.md).
- * Everything else here (`GET /admin/api/v1/branches*`) is mocked — no system-wide branch
- * list/detail read-model exists on the real backend yet (admin_portal_design.md §5.3).
+ * `useInitializeDevice` calls the REAL `POST /v1/devices/initialize`. `useBranchesList`/
+ * `useBranch` call the REAL `GET /v1/admin/branches[/{code}]` read-model (confirmed against
+ * the live backend, 2026-09-01) — a flat, unpaginated array, paginated/sorted/searched
+ * client-side (src/lib/clientSidePaginate.ts), same as api/customers.ts.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
-import type { Branch, DeviceInitializeRequest, KraCallLogEntry, Page, SortParam, SyncStatusRow } from "@/api/types";
+import { paginateClientSide } from "@/lib/clientSidePaginate";
+import type { DataTableState } from "@/components/data-table/useDataTableState";
+import type { AdminCallLogEntry, Branch, BranchAdmin, DeviceInitializeRequest, Page } from "@/api/types";
 
-export interface BranchListParams {
-  page: number;
-  pageSize: number;
-  sort: SortParam | null;
-  search: string;
-  status?: string;
+export function useAllBranches() {
+  return useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiRequest<BranchAdmin[]>("/v1/admin/branches"),
+  });
 }
 
-export function useBranchesList(params: BranchListParams) {
-  return useQuery({
-    queryKey: ["branches", params],
-    queryFn: () =>
-      apiRequest<Page<Branch>>("/admin/api/v1/branches", {
-        query: {
-          page: params.page,
-          page_size: params.pageSize,
-          sort: params.sort ? `${params.sort.desc ? "-" : ""}${params.sort.id}` : undefined,
-          q: params.search || undefined,
-          status: params.status,
-        },
-      }),
-  });
+export function useBranchesList(
+  tableState: Pick<DataTableState, "page" | "pageSize" | "sort" | "search"> & { status?: string },
+): { data: Page<BranchAdmin> | undefined; isLoading: boolean; isError: boolean } {
+  const query = useAllBranches();
+  const items = query.data?.filter((b) => !tableState.status || b.status === tableState.status);
+  const data = items
+    ? paginateClientSide(items, tableState, {
+        searchFields: (b) => [b.branch_code, b.tin],
+        sortAccessor: (b, id) => (id === "branch_code" ? b.branch_code : id === "created_at" ? b.created_at : ""),
+      })
+    : undefined;
+  return { data, isLoading: query.isLoading, isError: query.isError };
 }
 
 export function useBranch(branchCode: string | undefined) {
   return useQuery({
     queryKey: ["branches", branchCode],
-    queryFn: () => apiRequest<Branch>(`/admin/api/v1/branches/${branchCode}`),
+    queryFn: () => apiRequest<BranchAdmin>(`/v1/admin/branches/${branchCode}`),
     enabled: !!branchCode,
   });
 }
 
-export function useBranchCallLog(branchCode: string | undefined) {
+export function useBranchCallLog(branchCode: string | undefined, limit = 20) {
   return useQuery({
-    queryKey: ["branches", branchCode, "calls"],
-    queryFn: () =>
-      apiRequest<Page<KraCallLogEntry>>("/admin/api/v1/monitoring/kra-calls", {
-        query: { branch_code: branchCode, page: 1, page_size: 20 },
-      }),
-    enabled: !!branchCode,
-  });
-}
-
-export function useBranchSyncState(branchCode: string | undefined) {
-  return useQuery({
-    queryKey: ["branches", branchCode, "sync-state"],
-    queryFn: () =>
-      apiRequest<SyncStatusRow[]>("/admin/api/v1/monitoring/sync-status", {
-        query: { branch_code: branchCode },
-      }),
+    queryKey: ["call-logs", "branch", branchCode, limit],
+    queryFn: () => apiRequest<AdminCallLogEntry[]>("/v1/admin/call-logs", { query: { branch_code: branchCode, limit } }),
     enabled: !!branchCode,
   });
 }

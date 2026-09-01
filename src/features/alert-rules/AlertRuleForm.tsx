@@ -66,14 +66,14 @@ export function AlertRuleForm({
     metric,
     condition,
     threshold: Number(threshold) || 0,
-    scope_client_id: null,
+    scope_customer_id: null,
     scope_branch_code: null,
   });
 
   return (
     <form
       className="space-y-4"
-      onSubmit={handleSubmit((values) => onSubmit({ ...values, scope_client_id: null, scope_branch_code: null }))}
+      onSubmit={handleSubmit((values) => onSubmit({ ...values, scope_customer_id: null, scope_branch_code: null }))}
       noValidate
     >
       <div className="space-y-2">

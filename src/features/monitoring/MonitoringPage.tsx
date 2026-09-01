@@ -112,7 +112,7 @@ function OutboxTable() {
   const columns: ColumnDef<OutboxItem, unknown>[] = [
     { id: "endpoint", header: "Endpoint", accessorFn: (o) => o.endpoint },
     { id: "branch_code", header: "Branch", accessorFn: (o) => o.branch_code ?? "—" },
-    { id: "client_name", header: "Client", accessorFn: (o) => o.client_name ?? "—" },
+    { id: "customer_name", header: "Customer", accessorFn: (o) => o.customer_name ?? "—" },
     { id: "status", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.status} /> },
     { id: "attempts", header: "Attempts", accessorFn: (o) => o.attempts },
     { id: "last_error", header: "Last error", accessorFn: (o) => o.last_error ?? "—" },
@@ -171,7 +171,7 @@ function OutboxTable() {
           onSortChange={setSort}
           onSearchChange={setSearch}
           onPageChange={setPage}
-          searchPlaceholder="Search by endpoint, branch, client…"
+          searchPlaceholder="Search by endpoint, branch, customer…"
           onRowClick={(item) => navigate(`/monitoring/outbox/${item.id}`)}
           emptyState="Outbox is empty."
           toolbarExtra={
@@ -196,7 +196,7 @@ function OutboxTable() {
         open={!!cancelTarget}
         onOpenChange={(open) => !open && setCancelTarget(null)}
         title="Cancel this outbox item?"
-        description="Stops the dispatcher from retrying it permanently — use only for known-bad data the client needs to resubmit."
+        description="Stops the dispatcher from retrying it permanently — use only for known-bad data the connector needs to resubmit."
         confirmLabel="Cancel item"
         variant="destructive"
         isPending={cancel.isPending}

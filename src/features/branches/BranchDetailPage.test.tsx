@@ -8,31 +8,29 @@ import { Routes, Route } from "react-router-dom";
 
 // A real, un-truncated cmc_key shape — if a fixture or API response ever accidentally
 // included the raw key, this regression test would catch it appearing anywhere in the DOM.
+// The real GET /v1/admin/branches/{code} response has no cmc_key-shaped field at all (there's
+// no masked-fingerprint UI to assert on either) — this fixture simulates a hypothetical future
+// response bug leaking the raw key under an unexpected field name, which the page must still
+// never render regardless of what the API happens to send.
 const RAW_CMC_KEY = "cmc_live_9f8e7d6c5b4a3210abcdefabcdefabcd";
 
 describe("BranchDetailPage — cmc_key must never render", () => {
-  it("renders only the masked fingerprint, never the raw cmc_key, even if a response leaked it", async () => {
+  it("never renders a raw cmc_key anywhere, even if a response leaked it", async () => {
     server.use(
-      http.get("*/admin/api/v1/branches/NAIROBI-HQ", () =>
+      http.get("*/v1/admin/branches/NAIROBI-HQ", () =>
         HttpResponse.json({
+          id: "b-0001",
           branch_code: "NAIROBI-HQ",
           tin: "A123456789Z",
           bhf_id: "00",
           status: "ACTIVE",
           device_type: "OSCU",
-          kra_base_url_override: null,
-          dvc_id: "DVC-0001",
-          sdc_id: "SDC-0001",
-          mrc_no: "MRC-0001",
-          cmc_key_last_rotated_at: "2026-06-01T00:00:00Z",
-          cmc_key_fingerprint: "…a91f",
-          // A regression fixture: some hypothetical future response bug leaks the raw key
-          // under an unexpected field name. The component must never render it regardless.
+          created_at: "2026-01-01T00:00:00Z",
+          vscu: null,
           cmc_key: RAW_CMC_KEY,
         }),
       ),
-      http.get("*/admin/api/v1/monitoring/kra-calls", () => HttpResponse.json({ items: [], total: 0, page: 1, page_size: 20 })),
-      http.get("*/admin/api/v1/monitoring/sync-status", () => HttpResponse.json([])),
+      http.get("*/v1/admin/call-logs", () => HttpResponse.json([])),
     );
 
     renderWithProviders(
@@ -42,7 +40,7 @@ describe("BranchDetailPage — cmc_key must never render", () => {
       { route: "/branches/NAIROBI-HQ" },
     );
 
-    await waitFor(() => expect(screen.getByTestId("cmc-key-fingerprint")).toHaveTextContent("…a91f"));
+    await waitFor(() => expect(screen.getByText("NAIROBI-HQ")).toBeInTheDocument());
 
     expect(document.body.textContent).not.toContain(RAW_CMC_KEY);
     expect(document.body.innerHTML).not.toContain(RAW_CMC_KEY);
