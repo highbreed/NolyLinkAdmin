@@ -30,6 +30,42 @@ export interface UpdateCustomerRequest {
   branch_codes?: string[] | null;
 }
 
+// ---- Real: POST /v1/customers/onboard — single-call stepper-form onboarding (2026-09-01) --
+// Registers every branch (KRA device-init, plus VSCU app init for VSCU ones) and creates the
+// Customer with whichever branches succeeded. Best-effort per branch, not atomic — KRA has no
+// "delete device" API, so a real rollback would risk leaving KRA thinking a branch is
+// registered with nothing local to show for it. Always 201s, even if every branch failed.
+
+export interface CustomerOnboardBranchInput {
+  branch_code: string;
+  tin: string;
+  bhf_id: string;
+  device_type: DeviceType;
+  /** The customer's own local VSCU app URL — required when device_type is "VSCU". */
+  base_url?: string | null;
+  kra_base_url_override?: string | null;
+}
+
+export interface CustomerOnboardRequest {
+  name: string;
+  branches: CustomerOnboardBranchInput[];
+}
+
+export type BranchOnboardStatus = "REGISTERED" | "FAILED";
+
+export interface BranchOnboardResult {
+  branch_code: string;
+  device_type: DeviceType;
+  status: BranchOnboardStatus;
+  branch_id: string | null;
+  error: string | null;
+}
+
+export interface CustomerOnboardResponse {
+  customer: Customer;
+  branches: BranchOnboardResult[];
+}
+
 export interface Connector {
   client_id: string;
   name: string;

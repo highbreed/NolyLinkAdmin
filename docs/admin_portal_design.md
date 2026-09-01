@@ -154,6 +154,14 @@ session-authenticated equivalents instead, described here).
 > connectors — creating a new connector is the only way to replace a lost secret, and
 > attaching a branch is done via `PATCH /v1/customers/{id}` with the full new `branch_codes`
 > list (not a dedicated attach endpoint). See `docs/frontend_README.md` for the full mapping.
+>
+> **Further update (2026-09-01, same day):** the backend also shipped a combined onboarding
+> call this section didn't originally spec — `POST /v1/customers/onboard`, taking `{name,
+> branches: [{branch_code, tin, bhf_id, device_type, base_url?}]}` and returning the created
+> Customer plus a per-branch `REGISTERED`/`FAILED` status in one response. It's best-effort per
+> branch, not atomic (KRA has no "delete device" API, so a real rollback would be unsafe), and
+> is what `/customers/new`'s stepper form now calls instead of a plain `POST /v1/customers`
+> with pre-existing branch codes.
 
 | Endpoint | Purpose |
 |---|---|

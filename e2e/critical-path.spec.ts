@@ -22,7 +22,12 @@ test("login, register a customer, create a connector, suspend, see the blocked b
   await page.getByRole("button", { name: /register customer/i }).click();
 
   await page.getByLabel(/customer name/i).fill("Playwright E2E Customer");
-  await page.getByRole("button", { name: /^register customer$/i }).click();
+  // No branches added — onboarding with zero branches is valid (branches can be added later),
+  // and per-branch REGISTERED/FAILED display is covered by CustomerNewPage.test.tsx already.
+  await page.getByRole("button", { name: /^onboard customer$/i }).click();
+
+  await expect(page.getByText(/customer onboarded/i)).toBeVisible();
+  await page.getByRole("button", { name: /continue to connectors/i }).click();
 
   // Customer creation itself returns no secret — that only happens when a connector is
   // created under it, on the Connectors tab this navigates to next.

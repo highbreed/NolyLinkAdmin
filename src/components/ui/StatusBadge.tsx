@@ -8,11 +8,11 @@ import { CheckCircle2, Clock, XCircle, Ban, MinusCircle, AlertTriangle } from "l
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import type { BillingStatusBucket } from "@/lib/billingStatus";
-import type { BranchStatus, OutboxStatus } from "@/api/types";
+import type { BranchOnboardStatus, BranchStatus, OutboxStatus } from "@/api/types";
 
 type AlertStatus = "FIRING" | "RESOLVED";
 
-type AnyStatus = BillingStatusBucket | BranchStatus | OutboxStatus | AlertStatus;
+type AnyStatus = BillingStatusBucket | BranchStatus | OutboxStatus | AlertStatus | BranchOnboardStatus;
 
 interface StatusMeta {
   label: string;
@@ -36,6 +36,8 @@ const STATUS_MAP: Record<AnyStatus, StatusMeta> = {
   // Alerts
   FIRING: { label: "Firing", variant: "blocked", Icon: AlertTriangle },
   RESOLVED: { label: "Resolved", variant: "active", Icon: CheckCircle2 },
+  // Customer-onboarding per-branch result (FAILED reuses the outbox entry above)
+  REGISTERED: { label: "Registered", variant: "active", Icon: CheckCircle2 },
 };
 
 export function StatusBadge({ status, className }: { status: AnyStatus; className?: string }) {

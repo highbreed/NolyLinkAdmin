@@ -62,6 +62,7 @@ paths (`/admin/login`, `/admin/users*`, not `/admin/api/v1/auth`, `/admin/api/v1
 | Auth (`/login`) | **Real** | `POST /admin/login` — username/password → JWT `access_token`, sent as `Authorization: Bearer <token>` on every request thereafter. No MFA, no roles server-side. |
 | Admin users (`/admin-users`) | **Real** | `GET/POST /admin/users`, `POST /admin/users/{id}/deactivate`/`reactivate`. No `role`/`email`/`mfa_enabled` fields exist server-side — only `username`, `full_name`, `is_active`. |
 | Customers CRUD + connectors (`/customers*`) | **Real** | `POST/GET/PATCH /v1/customers`, `POST/GET /v1/customers/{id}/connectors`. No rotate/delete for connectors yet — losing a secret means creating a new connector. |
+| Customer onboarding (`/customers/new`) | **Real** | `POST /v1/customers/onboard` — one call registers every branch's device (KRA + VSCU app init) and creates the Customer with whichever succeeded. Best-effort per branch, not atomic: a partial failure still creates the customer with what registered. Retrying the whole form creates a **second** customer — fix a failed branch via `/branches/new` + attach it from the customer's Branches tab instead, per the result screen's own guidance. |
 | Device init (`/branches/new`) | **Real** | Calls `POST /v1/devices/initialize` exactly per `api_reference.md`. |
 | Branch/call-log read-model (`/branches`, monitoring's Activity/Recent calls) | **Real** | `GET /v1/admin/branches[/{code}]`, `GET /v1/admin/call-logs`. No server-side pagination for either — both a flat array (branches) or `limit`-capped (call-logs), paginated/filtered client-side in this app. |
 | Billing actions (suspend/reactivate/cancel/invoices/mark-paid) | **Real** | Calls `/v1/billing/*`, keyed by `customer_id`. One mutation implementation, reused by the customer detail billing tab and the billing overview page. |
@@ -149,7 +150,12 @@ now exists to use instead.
   .test.tsx` asserts suspend is blocked until a reason is typed and cancel is blocked until the
   exact confirm phrase is typed; `RequireRole.test.tsx` asserts `/admin-users` redirects a
   non-Superadmin session by URL, not just hides the nav link; `LoginPage.test.tsx` covers the
-  real login happy path, a rejected/unknown username, and an unreachable-gateway error.
+  real login happy path, a rejected/unknown username, and an unreachable-gateway error;
+  `CustomerNewPage.test.tsx` covers the onboarding stepper's multi-branch success, a per-branch
+  FAILED result rendering alongside REGISTERED ones, and client-side VSCU `base_url` validation;
+  `client.test.ts` asserts `apiRequest` normalizes FastAPI's array-shaped validation-error
+  `detail` (confirmed live on `POST /v1/customers/onboard`'s VSCU check) into a readable
+  string, never `"[object Object]"` or a React child-rendering crash.
 
 ## Known gaps (intentional, not oversights)
 
@@ -159,6 +165,14 @@ now exists to use instead.
 - No rotate/delete for connectors — the real backend doesn't have those endpoints yet
   (`app/services/customer_service.py`'s own docstring flags this); a lost secret means
   creating a new connector, not recovering the old one.
+- `/customers/new` no longer lets you attach *existing* branches at creation time — it only
+  registers brand-new devices via `POST /v1/customers/onboard`. Attaching an already-
+  initialized branch to a customer is still there, just moved to the customer detail page's
+  Branches tab (`PATCH /v1/customers/{id}` with the full new `branch_codes` list).
+- No "resubmit only the failed branches into this same customer" recovery flow after a partial
+  onboarding failure — the onboarding endpoint always creates a new Customer, so resubmitting
+  the whole form would create a second one. The result screen instead points at the existing
+  `/branches/new` (register the fixed device individually) + Branches-tab-attach path.
 - `CustomersListPage`'s status filter/sort and the billing overview's expirations list fetch
   every customer's subscription individually (`useQueries`) since the real customer list has
   no billing fields — fine at the scale an admin tool deals with, would need a real aggregate

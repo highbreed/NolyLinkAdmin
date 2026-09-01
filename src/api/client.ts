@@ -28,6 +28,25 @@ export class ApiError extends Error {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
+/**
+ * Most endpoints return `{"detail": "some string"}` on error, but FastAPI's own request-level
+ * validation (a Pydantic model_validator raising, confirmed on POST /v1/customers/onboard's
+ * VSCU base_url check) returns `{"detail": [{"msg": "...", "loc": [...], ...}, ...]}` instead —
+ * an array of error objects, not a string. Rendering that array directly as a string/JSX child
+ * would show "[object Object]" or crash React outright, so this normalizes both shapes.
+ */
+function extractDetail(data: unknown, fallback: string): string {
+  if (typeof data !== "object" || data === null || !("detail" in data)) return fallback;
+  const detail = (data as { detail?: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e) => (typeof e === "object" && e !== null && "msg" in e ? String((e as { msg: unknown }).msg) : JSON.stringify(e)))
+      .join("; ");
+  }
+  return fallback;
+}
+
 export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
@@ -66,8 +85,7 @@ export async function apiRequest<TResponse>(
     useSessionStore.getState().clearSession();
     let detail = "Session expired — please sign in again.";
     try {
-      const data = (await response.json()) as { detail?: string };
-      detail = data.detail ?? detail;
+      detail = extractDetail(await response.json(), detail);
     } catch {
       /* no JSON body */
     }
@@ -77,8 +95,7 @@ export async function apiRequest<TResponse>(
   if (!response.ok) {
     let detail = `Request failed (${response.status})`;
     try {
-      const data = (await response.json()) as { detail?: string };
-      detail = data.detail ?? detail;
+      detail = extractDetail(await response.json(), detail);
     } catch {
       /* no JSON body */
     }

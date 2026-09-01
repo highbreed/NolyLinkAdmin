@@ -28,9 +28,11 @@ import type {
   AlertRule,
   Branch,
   BranchAdmin,
+  BranchOnboardResult,
   Connector,
   CreateAdminUserRequest,
   Customer,
+  CustomerOnboardBranchInput,
   DeviceInitializeRequest,
   Invoice,
   MonitoringSummary,
@@ -343,6 +345,95 @@ export const realHandlers = [
       { client_id: connector.client_id, client_secret: `secret_${crypto.randomUUID().replace(/-/g, "")}`, name: connector.name },
       { status: 201 },
     );
+  }),
+
+  // ---- Real: stepper-form onboarding (customer + branch device registration in one call) ---
+  http.post("*/v1/customers/onboard", async ({ request }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const body = (await request.json()) as { name: string; branches: CustomerOnboardBranchInput[] };
+
+    // Mirrors the real backend's request-level (pydantic) validation exactly, including its
+    // shape: a Pydantic model_validator raising turns into FastAPI's standard 422 body — an
+    // ARRAY of error objects under `detail`, not a plain string (confirmed via curl against
+    // the live backend, 2026-09-01) — rejecting the WHOLE request before any branch is
+    // registered, not a per-branch FAILED outcome.
+    const missingBaseUrl = body.branches.find((b) => b.device_type === "VSCU" && !b.base_url);
+    if (missingBaseUrl) {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              type: "value_error",
+              loc: ["body", "branches", body.branches.indexOf(missingBaseUrl)],
+              msg: `Value error, branch '${missingBaseUrl.branch_code}': base_url is required for VSCU`,
+              input: missingBaseUrl,
+              ctx: { error: {} },
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+
+    const outcomes: BranchOnboardResult[] = [];
+    const registeredBranchCodes: string[] = [];
+    for (const b of body.branches) {
+      const existing = branchesFixture.find((br) => br.tin === b.tin && br.bhf_id === b.bhf_id);
+      if (existing) {
+        const owner = customersFixture.find((c) => c.branch_codes.includes(existing.branch_code));
+        if (owner) {
+          outcomes.push({
+            branch_code: b.branch_code,
+            device_type: b.device_type,
+            status: "FAILED",
+            branch_id: null,
+            error: `(tin, bhfId) is already registered under a different customer ('${owner.name}') — check for a data-entry mistake`,
+          });
+          continue;
+        }
+        // Idempotent per the real backend: an existing, unowned branch registers as success.
+        outcomes.push({ branch_code: existing.branch_code, device_type: existing.device_type, status: "REGISTERED", branch_id: existing.id, error: null });
+        registeredBranchCodes.push(existing.branch_code);
+        continue;
+      }
+      const seq = String(branchesFixture.length + 1).padStart(4, "0");
+      const newBranch: BranchAdmin = {
+        id: `b-mock-${seq}`,
+        branch_code: b.branch_code,
+        tin: b.tin,
+        bhf_id: b.bhf_id,
+        status: "ACTIVE",
+        device_type: b.device_type,
+        created_at: new Date().toISOString(),
+        vscu:
+          b.device_type === "VSCU"
+            ? {
+                base_url: b.base_url ?? "",
+                initialized_at: new Date().toISOString(),
+                last_sequence_sync_at: null,
+                last_known_invc_no: null,
+                last_known_sale_rcpt_no: null,
+                last_successful_call_at: null,
+                last_error: null,
+              }
+            : null,
+      };
+      branchesFixture.push(newBranch);
+      outcomes.push({ branch_code: b.branch_code, device_type: b.device_type, status: "REGISTERED", branch_id: newBranch.id, error: null });
+      registeredBranchCodes.push(newBranch.branch_code);
+    }
+
+    const customer: Customer = {
+      id: `cu-mock-${String(nextCustomerSeq++).padStart(4, "0")}`,
+      name: body.name,
+      branch_codes: registeredBranchCodes,
+      created_at: new Date().toISOString(),
+    };
+    customersFixture.push(customer);
+    connectorsFixture[customer.id] = [];
+
+    return HttpResponse.json({ customer, branches: outcomes }, { status: 201 });
   }),
 
   // ---- Real: admin dashboard read-model (branches + merged call log) ---------------------

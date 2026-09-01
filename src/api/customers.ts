@@ -1,6 +1,7 @@
 /**
  * Real endpoints (confirmed against the live backend, 2026-09-01): `POST/GET/PATCH
- * /v1/customers`, `POST/GET /v1/customers/{id}/connectors`. See docs/frontend_README.md.
+ * /v1/customers`, `POST /v1/customers/onboard`, `POST/GET /v1/customers/{id}/connectors`. See
+ * docs/frontend_README.md.
  *
  * GET /v1/customers returns a flat, unpaginated array — pagination/sort/search here are
  * applied client-side over the cached full list (src/lib/clientSidePaginate.ts), not sent as
@@ -8,7 +9,15 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
-import type { Connector, ConnectorSecretOnce, CreateCustomerRequest, Customer, UpdateCustomerRequest } from "@/api/types";
+import type {
+  Connector,
+  ConnectorSecretOnce,
+  CreateCustomerRequest,
+  Customer,
+  CustomerOnboardRequest,
+  CustomerOnboardResponse,
+  UpdateCustomerRequest,
+} from "@/api/types";
 
 export function useAllCustomers() {
   return useQuery({
@@ -30,6 +39,23 @@ export function useCreateCustomer() {
   return useMutation({
     mutationFn: (body: CreateCustomerRequest) => apiRequest<Customer>("/v1/customers", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["customers"] }),
+  });
+}
+
+/**
+ * The stepper-form onboarding call: registers every branch (KRA + VSCU device init) and
+ * creates the Customer with whichever branches succeeded, in one request. Always resolves —
+ * per-branch REGISTERED/FAILED status lives in the response, not in HTTP success/failure.
+ */
+export function useOnboardCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CustomerOnboardRequest) =>
+      apiRequest<CustomerOnboardResponse>("/v1/customers/onboard", { method: "POST", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["branches"] });
+    },
   });
 }
 
