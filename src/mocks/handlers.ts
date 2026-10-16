@@ -16,10 +16,14 @@ import {
   auditLogFixture,
   branchesFixture,
   connectorsFixture,
+  customerCodeAllowlistFixture,
   customersFixture,
   invoicesFixture,
+  itemClassesFixture,
   notificationsFixture,
   outboxFixture,
+  referenceCodesFixture,
+  referenceDataIndexFixture,
   subscriptionsFixture,
   syncStatusFixture,
 } from "@/mocks/fixtures";
@@ -32,6 +36,7 @@ import type {
   Connector,
   CreateAdminUserRequest,
   Customer,
+  CustomerCodeAllowlistEntry,
   CustomerOnboardBranchInput,
   DeviceInitializeRequest,
   Invoice,
@@ -528,6 +533,64 @@ export const realHandlers = [
     if (!user) return HttpResponse.json({ detail: `No admin user with id=${params.id}` }, { status: 404 });
     user.is_active = true;
     return HttpResponse.json(user);
+  }),
+
+  // ---- Real: reference-data browsing + per-customer code allow-lists ----------------------
+  // kra_vscu_backend/docs/reference_data_and_code_assignment.md §3/§4.
+  http.get("*/v1/admin/reference-data/codes", ({ request }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    return HttpResponse.json(referenceDataIndexFixture);
+  }),
+
+  http.get("*/v1/admin/reference-data/codes/:classification", ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const codes = referenceCodesFixture[params.classification as string];
+    if (!codes) return HttpResponse.json({ detail: "Unknown classification" }, { status: 404 });
+    const q = new URL(request.url).searchParams.get("q")?.toLowerCase();
+    const filtered = q ? codes.filter((c) => c.cd.toLowerCase().includes(q) || c.cd_nm.toLowerCase().includes(q)) : codes;
+    return HttpResponse.json(filtered);
+  }),
+
+  http.get("*/v1/admin/reference-data/item-classes", ({ request }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const params = new URL(request.url).searchParams;
+    const level = params.get("level");
+    const prefix = params.get("prefix");
+    const q = params.get("q")?.toLowerCase();
+    let filtered = itemClassesFixture;
+    if (level) filtered = filtered.filter((c) => c.item_cls_lvl === level);
+    if (prefix) filtered = filtered.filter((c) => c.item_cls_cd.startsWith(prefix));
+    if (q) filtered = filtered.filter((c) => c.item_cls_nm.toLowerCase().includes(q));
+    return HttpResponse.json(filtered);
+  }),
+
+  http.get("*/v1/customers/:id/code-allowlist", ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const customerId = params.id as string;
+    if (!customersFixture.some((c) => c.id === customerId)) {
+      return HttpResponse.json({ detail: "No customer with that id" }, { status: 404 });
+    }
+    return HttpResponse.json(customerCodeAllowlistFixture[customerId] ?? []);
+  }),
+
+  http.put("*/v1/customers/:id/code-allowlist/:classification", async ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const customerId = params.id as string;
+    if (!customersFixture.some((c) => c.id === customerId)) {
+      return HttpResponse.json({ detail: "No customer with that id" }, { status: 404 });
+    }
+    const classification = params.classification as string;
+    const body = (await request.json()) as { codes: string[] };
+    const existing = customerCodeAllowlistFixture[customerId] ?? [];
+    const withoutThis = existing.filter((e) => e.classification !== classification);
+    const entry: CustomerCodeAllowlistEntry = { classification, codes: body.codes };
+    customerCodeAllowlistFixture[customerId] = body.codes.length ? [...withoutThis, entry] : withoutThis;
+    return HttpResponse.json(entry);
   }),
 ];
 

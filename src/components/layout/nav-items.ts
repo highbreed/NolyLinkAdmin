@@ -8,6 +8,7 @@ import {
   BellRing,
   ScrollText,
   ShieldCheck,
+  Tags,
 } from "lucide-react";
 
 export interface NavItem {
@@ -35,6 +36,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Branches",
     to: "/branches",
     icon: Router,
+    roles: ["SUPERADMIN", "OPS", "AUDITOR"],
+  },
+  {
+    label: "Reference data",
+    to: "/reference-data",
+    icon: Tags,
     roles: ["SUPERADMIN", "OPS", "AUDITOR"],
   },
   {

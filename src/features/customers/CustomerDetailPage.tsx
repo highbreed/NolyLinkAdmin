@@ -6,15 +6,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCustomer, useAttachBranch } from "@/api/customers";
 import { useSubscription, useCustomerInvoices } from "@/api/billing";
 import { useCustomerActivity } from "@/api/monitoring";
 import { useAllBranches } from "@/api/branches";
 import { deriveBillingStatus } from "@/lib/billingStatus";
-import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatRelativeToNow } from "@/lib/format";
 import { BlockedCustomerBanner } from "@/features/customers/BlockedCustomerBanner";
 import { SubscriptionActions } from "@/features/billing/SubscriptionActions";
+import { SetPlanDialog } from "@/features/billing/SetPlanDialog";
+import { CreateInvoiceDialog } from "@/features/billing/CreateInvoiceDialog";
 import { ConnectorsTab } from "@/features/customers/ConnectorsTab";
+import { CustomerCodeAllowlistTab } from "@/features/customers/CustomerCodeAllowlistTab";
 import { AuditLogTable } from "@/features/audit-log/AuditLogTable";
 import { toast } from "@/components/ui/use-toast";
 import type { Invoice } from "@/api/types";
@@ -53,28 +57,60 @@ export function CustomerDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="connectors">Connectors</TabsTrigger>
           <TabsTrigger value="branches">Branches</TabsTrigger>
+          <TabsTrigger value="codes">Codes</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
-          <Card>
-            <CardHeader>
-              <CardTitle>Subscription summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                <StatusBadge status={status.bucket} />
-                {status.relevantDate && (
-                  <span className="text-sm text-muted-foreground">
-                    {status.bucket === "GRACE" ? "Grace ends" : "Paid through"} {formatDate(status.relevantDate.toISOString())}
-                  </span>
-                )}
-              </div>
-              <SubscriptionActions customerId={customer.id} subscription={subscriptionQuery.data} />
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Customer details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="text-muted-foreground">Customer ID</dt>
+                    <dd className="font-mono">{customer.id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Name</dt>
+                    <dd>{customer.name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Created</dt>
+                    <dd>{formatDate(customer.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Branches</dt>
+                    <dd>{customer.branch_codes.length}</dd>
+                  </div>
+                </dl>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Subscription summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={status.bucket} />
+                  {status.relevantDate && (
+                    <span className="text-sm text-muted-foreground">
+                      {status.bucket === "GRACE" ? "Grace ends" : "Paid through"} {formatDate(status.relevantDate.toISOString())}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <SetPlanDialog customerId={customer.id} subscription={subscriptionQuery.data} />
+                  <SubscriptionActions customerId={customer.id} subscription={subscriptionQuery.data} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="connectors">
@@ -87,18 +123,55 @@ export function CustomerDetailPage() {
               <CardTitle>Allowed branches ({customer.branch_codes.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <ul className="space-y-1 text-sm">
-                {customer.branch_codes.length === 0 && (
-                  <li className="text-muted-foreground">No branches attached yet.</li>
-                )}
-                {customer.branch_codes.map((branchCode) => (
-                  <li key={branchCode}>
-                    <button className="text-primary hover:underline" onClick={() => navigate(`/branches/${branchCode}`)}>
-                      {branchCode}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {customer.branch_codes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No branches attached yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Branch code</TableHead>
+                      <TableHead>TIN</TableHead>
+                      <TableHead>BHF ID</TableHead>
+                      <TableHead>Device type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Registered</TableHead>
+                      <TableHead>Last successful call</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {customer.branch_codes.map((branchCode) => {
+                      const branch = branchesQuery.data?.find((b) => b.branch_code === branchCode);
+                      return (
+                        <TableRow
+                          key={branchCode}
+                          className="cursor-pointer"
+                          onClick={() => navigate(`/branches/${branchCode}`)}
+                        >
+                          <TableCell>
+                            <button
+                              className="text-primary hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/branches/${branchCode}`);
+                              }}
+                            >
+                              {branchCode}
+                            </button>
+                          </TableCell>
+                          <TableCell>{branch?.tin ?? "—"}</TableCell>
+                          <TableCell>{branch?.bhf_id ?? "—"}</TableCell>
+                          <TableCell>{branch?.device_type ?? "—"}</TableCell>
+                          <TableCell>{branch ? <StatusBadge status={branch.status} /> : "—"}</TableCell>
+                          <TableCell>{branch ? formatDate(branch.created_at) : "—"}</TableCell>
+                          <TableCell>
+                            {branch?.vscu ? formatRelativeToNow(branch.vscu.last_successful_call_at) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
               <div className="flex items-center gap-2">
                 <select
                   className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
@@ -140,6 +213,10 @@ export function CustomerDetailPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="codes">
+          <CustomerCodeAllowlistTab customerId={customer.id} />
+        </TabsContent>
+
         <TabsContent value="billing">
           <div className="space-y-4">
             <Card>
@@ -148,13 +225,17 @@ export function CustomerDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <StatusBadge status={status.bucket} />
-                <SubscriptionActions customerId={customer.id} subscription={subscriptionQuery.data} />
+                <div className="flex flex-wrap gap-2">
+                  <SetPlanDialog customerId={customer.id} subscription={subscriptionQuery.data} />
+                  <SubscriptionActions customerId={customer.id} subscription={subscriptionQuery.data} />
+                </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle>Invoices</CardTitle>
+                <CreateInvoiceDialog customerId={customer.id} />
               </CardHeader>
               <CardContent>
                 <InvoicesList invoices={invoicesQuery.data ?? []} />

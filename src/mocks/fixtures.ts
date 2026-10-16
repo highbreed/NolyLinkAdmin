@@ -12,9 +12,13 @@ import type {
   BranchAdmin,
   Connector,
   Customer,
+  CustomerCodeAllowlistEntry,
   Invoice,
+  ItemClass,
   NotificationSent,
   OutboxItem,
+  ReferenceCode,
+  ReferenceCodeClassification,
   Subscription,
   SyncStatusRow,
 } from "@/api/types";
@@ -330,3 +334,57 @@ export const adminUsersFixture: AdminUser[] = [
     created_at: daysAgo(300),
   },
 ];
+
+// ---- Real: reference-data cache (kra_code_lists / kra_item_classes) + code allow-lists -----
+// Rows below mirror the exact examples given in
+// kra_vscu_backend/docs/reference_data_and_code_assignment.md — this gateway's own stated
+// policy is to never fabricate KRA reference values, so the mock reuses the doc's real sample
+// rows rather than inventing new ones. A small subset stands in for what's a ~1000-row table
+// (item classes) or ~50-row table (packaging/quantity units) on the real backend.
+
+export const referenceCodesFixture: Record<string, ReferenceCode[]> = {
+  "tax-type": [
+    { cd: "A", cd_nm: "A-Exempt", cd_desc: "A-Exempt", srt_ord: 1, use_yn: "Y" },
+    { cd: "B", cd_nm: "B-VAT 16% ", cd_desc: "B-VAT 16% ", srt_ord: 2, use_yn: "Y" },
+    { cd: "C", cd_nm: "C-Zero Rated", cd_desc: "C-Zero Rated", srt_ord: 3, use_yn: "Y" },
+    { cd: "E", cd_nm: "E-VAT 8%", cd_desc: "E-VAT 8%", srt_ord: 4, use_yn: "N" },
+    { cd: "D", cd_nm: "D-Non VAT", cd_desc: "D-Non VAT", srt_ord: 5, use_yn: "Y" },
+  ],
+  "packaging-unit": [
+    { cd: "NT", cd_nm: "Net", cd_desc: "Net", srt_ord: 1, use_yn: "Y" },
+    { cd: "BG", cd_nm: "Bag", cd_desc: "Bag", srt_ord: 2, use_yn: "Y" },
+    { cd: "CT", cd_nm: "Carton", cd_desc: "Carton", srt_ord: 3, use_yn: "Y" },
+  ],
+  "quantity-unit": [
+    { cd: "BA", cd_nm: "Bag", cd_desc: "Bag", srt_ord: 1, use_yn: "Y" },
+    { cd: "KG", cd_nm: "Kilogram", cd_desc: "Kilogram", srt_ord: 2, use_yn: "Y" },
+  ],
+  nation: [
+    { cd: "KE", cd_nm: "Kenya", cd_desc: "Kenya", srt_ord: 1, use_yn: "Y" },
+    { cd: "UG", cd_nm: "Uganda", cd_desc: "Uganda", srt_ord: 2, use_yn: "Y" },
+    { cd: "TZ", cd_nm: "Tanzania", cd_desc: "Tanzania", srt_ord: 3, use_yn: "Y" },
+  ],
+};
+
+export const referenceDataIndexFixture: ReferenceCodeClassification[] = Object.entries(referenceCodesFixture).map(
+  ([classification, codes]) => ({
+    classification,
+    cd_cls: { "tax-type": "04", "packaging-unit": "17", "quantity-unit": "10", nation: "05" }[classification] ?? classification,
+    code_count: codes.length,
+  }),
+);
+
+export const itemClassesFixture: ItemClass[] = [
+  { item_cls_cd: "50000000", item_cls_nm: "Food and Beverage Products", item_cls_lvl: "1", tax_ty_cd: null, mjr_tg_yn: null, use_yn: "Y" },
+  { item_cls_cd: "50100000", item_cls_nm: "Nuts and seeds", item_cls_lvl: "2", tax_ty_cd: null, mjr_tg_yn: null, use_yn: "Y" },
+  { item_cls_cd: "50180000", item_cls_nm: "Bread and bakery products", item_cls_lvl: "2", tax_ty_cd: null, mjr_tg_yn: null, use_yn: "Y" },
+  { item_cls_cd: "50200000", item_cls_nm: "Beverages", item_cls_lvl: "2", tax_ty_cd: null, mjr_tg_yn: null, use_yn: "Y" },
+];
+
+/** Mutable in-memory allow-lists, keyed by customer id — mirrors how customersFixture is mutated. */
+export const customerCodeAllowlistFixture: Record<string, CustomerCodeAllowlistEntry[]> = {
+  [customerIdActive]: [{ classification: "tax-type", codes: ["B"] }],
+  [customerIdGrace]: [],
+  [customerIdSuspended]: [],
+  [customerIdNoSub]: [],
+};

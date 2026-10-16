@@ -308,6 +308,39 @@ export interface AuditLogEntry {
   created_at: string;
 }
 
+// ---- Real: reference-data cache (KRA code lists + item classes) + per-customer allow-lists --
+// See kra_vscu_backend/docs/reference_data_and_code_assignment.md. `classification` is the
+// friendly slug (code_cache_service.CLASSIFICATION_SLUGS) when one exists, otherwise the raw
+// `cd_cls`, plus the pseudo-slug "item-classification" for kra_item_classes.
+
+export interface ReferenceCodeClassification {
+  classification: string;
+  cd_cls: string;
+  code_count: number;
+}
+
+export interface ReferenceCode {
+  cd: string;
+  cd_nm: string;
+  cd_desc: string;
+  srt_ord: number;
+  use_yn: "Y" | "N";
+}
+
+export interface ItemClass {
+  item_cls_cd: string;
+  item_cls_nm: string;
+  item_cls_lvl: string;
+  tax_ty_cd: string | null;
+  mjr_tg_yn: string | null;
+  use_yn: string;
+}
+
+export interface CustomerCodeAllowlistEntry {
+  classification: string;
+  codes: string[];
+}
+
 // ---- Shared list/query envelope ----------------------------------------------------------
 
 export interface Page<T> {

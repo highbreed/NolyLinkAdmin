@@ -17,6 +17,7 @@ import { InvoiceDetailPage } from "@/features/billing/InvoiceDetailPage";
 import { MonitoringPage } from "@/features/monitoring/MonitoringPage";
 import { OutboxDetailPage } from "@/features/monitoring/OutboxDetailPage";
 import { AlertRulesPage } from "@/features/alert-rules/AlertRulesPage";
+import { ReferenceDataPage } from "@/features/reference-data/ReferenceDataPage";
 import { AuditLogPage } from "@/features/audit-log/AuditLogPage";
 import { AdminUsersPage } from "@/features/admin-users/AdminUsersPage";
 
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
           { path: "branches", element: wrap(<BranchesListPage />) },
           { path: "branches/new", element: wrap(<BranchNewPage />) },
           { path: "branches/:branchCode", element: wrap(<BranchDetailPage />) },
+          { path: "reference-data", element: wrap(<ReferenceDataPage />) },
           { path: "billing", element: wrap(<BillingOverviewPage />) },
           { path: "billing/invoices/:id", element: wrap(<InvoiceDetailPage />) },
           { path: "monitoring", element: wrap(<MonitoringPage />) },

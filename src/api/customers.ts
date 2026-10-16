@@ -14,6 +14,7 @@ import type {
   ConnectorSecretOnce,
   CreateCustomerRequest,
   Customer,
+  CustomerCodeAllowlistEntry,
   CustomerOnboardRequest,
   CustomerOnboardResponse,
   UpdateCustomerRequest,
@@ -101,5 +102,31 @@ export function useCreateConnector(customerId: string) {
         body: { name },
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["connectors", customerId] }),
+  });
+}
+
+/**
+ * Per-customer KRA code restrictions — see
+ * kra_vscu_backend/docs/reference_data_and_code_assignment.md §4. A classification with no
+ * entry here is unrestricted for that customer, not "no codes allowed".
+ */
+export function useCustomerCodeAllowlist(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ["customers", customerId, "code-allowlist"],
+    queryFn: () => apiRequest<CustomerCodeAllowlistEntry[]>(`/v1/customers/${customerId}/code-allowlist`),
+    enabled: !!customerId,
+  });
+}
+
+/** Replaces the entire allowed set for one (customer, classification) pair — not a merge. */
+export function useSetCustomerCodeAllowlist(customerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ classification, codes }: { classification: string; codes: string[] }) =>
+      apiRequest<CustomerCodeAllowlistEntry>(`/v1/customers/${customerId}/code-allowlist/${classification}`, {
+        method: "PUT",
+        body: { codes },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["customers", customerId, "code-allowlist"] }),
   });
 }
