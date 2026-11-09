@@ -9,6 +9,7 @@ import {
   ScrollText,
   ShieldCheck,
   Tags,
+  Webhook,
 } from "lucide-react";
 
 export interface NavItem {
@@ -66,6 +67,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Audit log",
     to: "/audit-log",
     icon: ScrollText,
+    roles: ["SUPERADMIN", "OPS", "BILLING_ADMIN", "AUDITOR"],
+  },
+  {
+    label: "API calls",
+    to: "/client-calls",
+    icon: Webhook,
     roles: ["SUPERADMIN", "OPS", "BILLING_ADMIN", "AUDITOR"],
   },
   {

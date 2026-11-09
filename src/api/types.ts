@@ -296,6 +296,22 @@ export interface NotificationSent {
   summary: string;
 }
 
+// ---- Real: every inbound client call + response (GET /v1/admin/client-calls), confirmed
+// against the live backend 2026-11-09. Distinct from the KRA/VSCU call-log views, which show
+// this gateway's own outbound calls TO KRA/VSCU, not inbound calls FROM clients.
+export interface ClientCallLogEntry {
+  id: number;
+  request_id: string;
+  client_id: string | null;
+  method: string;
+  path: string;
+  status_code: number;
+  duration_ms: number;
+  request_body: unknown;
+  response_body: unknown;
+  created_at: string;
+}
+
 export interface AuditLogEntry {
   id: number;
   admin_user_email: string | null; // null = break-glass X-Admin-Api-Key used

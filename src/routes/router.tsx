@@ -19,6 +19,7 @@ import { OutboxDetailPage } from "@/features/monitoring/OutboxDetailPage";
 import { AlertRulesPage } from "@/features/alert-rules/AlertRulesPage";
 import { ReferenceDataPage } from "@/features/reference-data/ReferenceDataPage";
 import { AuditLogPage } from "@/features/audit-log/AuditLogPage";
+import { ClientCallsPage } from "@/features/client-calls/ClientCallsPage";
 import { AdminUsersPage } from "@/features/admin-users/AdminUsersPage";
 
 function wrap(element: ReactNode) {
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
           { path: "monitoring/outbox/:id", element: wrap(<OutboxDetailPage />) },
           { path: "alert-rules", element: wrap(<AlertRulesPage />) },
           { path: "audit-log", element: wrap(<AuditLogPage />) },
+          { path: "client-calls", element: wrap(<ClientCallsPage />) },
           {
             element: <RequireRole roles={["SUPERADMIN"]} />,
             children: [{ path: "admin-users", element: wrap(<AdminUsersPage />) }],
