@@ -70,6 +70,7 @@ export interface Connector {
   client_id: string;
   name: string;
   created_at: string;
+  revoked_at: string | null;
 }
 
 export interface ConnectorSecretOnce {

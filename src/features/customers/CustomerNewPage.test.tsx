@@ -95,6 +95,71 @@ describe("CustomerNewPage — onboarding stepper", () => {
     expect(screen.getByText(/1 branch failed to register/i)).toBeInTheDocument();
   });
 
+  it("retries a failed branch: re-initializes the device, then attaches it to the SAME customer", async () => {
+    let onboardCallCount = 0;
+    let capturedInitBody: unknown = null;
+    let capturedPatchBody: unknown = null;
+
+    server.use(
+      http.post("*/v1/customers/onboard", async () => {
+        onboardCallCount += 1;
+        const response: CustomerOnboardResponse = {
+          customer: { id: "cu-retry", name: "Retry Co", branch_codes: ["BR-OK"], created_at: new Date().toISOString() },
+          branches: [
+            { branch_code: "BR-OK", device_type: "OSCU", status: "REGISTERED", branch_id: "b-1", error: null },
+            { branch_code: "BR-FIX", device_type: "OSCU", status: "FAILED", branch_id: null, error: "transient KRA timeout" },
+          ],
+        };
+        return HttpResponse.json(response, { status: 201 });
+      }),
+      http.post("*/v1/devices/initialize", async ({ request }) => {
+        capturedInitBody = await request.json();
+        return HttpResponse.json({
+          id: "b-2",
+          branch_code: "BR-FIX",
+          tin: "A444444444Z",
+          bhf_id: "03",
+          device_type: "OSCU",
+          status: "ACTIVE",
+          created_at: new Date().toISOString(),
+        });
+      }),
+      http.patch("*/v1/customers/cu-retry", async ({ request }) => {
+        capturedPatchBody = await request.json();
+        return HttpResponse.json({
+          id: "cu-retry",
+          name: "Retry Co",
+          branch_codes: ["BR-OK", "BR-FIX"],
+          created_at: new Date().toISOString(),
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<CustomerNewPage />, { route: "/customers/new" });
+
+    await user.type(screen.getByLabelText(/customer name/i), "Retry Co");
+    await user.click(screen.getByRole("button", { name: /add branch/i }));
+    await user.type(screen.getByLabelText(/branch code/i), "BR-FIX");
+    await user.type(screen.getByLabelText(/^tin$/i), "A444444444Z");
+    await user.type(screen.getByLabelText(/bhf id/i), "03");
+    await user.click(screen.getByRole("button", { name: /^onboard customer$/i }));
+
+    await waitFor(() => expect(screen.getByText("Failed")).toBeInTheDocument());
+    expect(onboardCallCount).toBe(1);
+
+    await user.click(screen.getByRole("button", { name: /retry failed branch/i }));
+
+    await waitFor(() => expect(screen.getByText("(retried)")).toBeInTheDocument());
+    expect(screen.getAllByText("Registered")).toHaveLength(2);
+    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+    // Still only ever one onboarding call — the retry never resubmits the whole form (which
+    // would create a second customer), it only re-registers the one failed branch.
+    expect(onboardCallCount).toBe(1);
+    expect(capturedInitBody).toMatchObject({ branch_code: "BR-FIX", tin: "A444444444Z", bhf_id: "03" });
+    expect(capturedPatchBody).toEqual({ branch_codes: ["BR-OK", "BR-FIX"] });
+  });
+
   it("requires a base_url for a VSCU branch before submitting", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CustomerNewPage />, { route: "/customers/new" });

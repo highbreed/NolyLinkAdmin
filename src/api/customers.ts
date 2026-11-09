@@ -105,6 +105,31 @@ export function useCreateConnector(customerId: string) {
   });
 }
 
+/** Issues a fresh client_secret for the same client_id — shown once, same as create. */
+export function useRotateConnector(customerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (clientId: string) =>
+      apiRequest<ConnectorSecretOnce>(
+        `/v1/customers/${customerId}/connectors/${clientId}/rotate`,
+        { method: "POST" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connectors", customerId] }),
+  });
+}
+
+/** Soft-revoke (app/db/models.py's Client.revoked_at) — not a hard delete; idempotent. */
+export function useRevokeConnector(customerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (clientId: string) =>
+      apiRequest<Connector>(`/v1/customers/${customerId}/connectors/${clientId}/revoke`, {
+        method: "POST",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connectors", customerId] }),
+  });
+}
+
 /**
  * Per-customer KRA code restrictions — see
  * kra_vscu_backend/docs/reference_data_and_code_assignment.md §4. A classification with no

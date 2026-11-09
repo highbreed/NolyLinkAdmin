@@ -10,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { useOnboardCustomer } from "@/api/customers";
+import { useOnboardCustomer, useUpdateCustomer } from "@/api/customers";
+import { useInitializeDevice } from "@/api/branches";
 import { toast } from "@/components/ui/use-toast";
-import type { CustomerOnboardResponse } from "@/api/types";
+import type { CustomerOnboardBranchInput, CustomerOnboardResponse } from "@/api/types";
 
 const branchSchema = z
   .object({
@@ -47,15 +48,23 @@ const emptyBranch: FormValues["branches"][number] = {
  * One-call onboarding, per the real POST /v1/customers/onboard: registers every branch (KRA
  * device-init, plus VSCU app init for VSCU ones) and creates the Customer with whichever
  * branches succeeded. Best-effort per branch, not atomic — a partial failure still creates the
- * customer with the branches that did register; failed ones need to be fixed and registered
- * individually via /branches/new, then attached from the customer's Branches tab (there's no
- * "resubmit only the failed ones into this same customer" — onboarding always creates a new
- * customer, so retrying this form again would create a second one).
+ * customer with the branches that did register. Resubmitting this whole form again would
+ * create a SECOND customer (onboarding always creates one), so the result screen's "Retry
+ * failed branches" button instead composes the same two real calls a manual fix would use —
+ * useInitializeDevice (POST /v1/devices/initialize) then useUpdateCustomer (PATCH .../{id},
+ * which useAttachBranch itself just wraps) — sequentially per branch, onto this SAME customer.
  */
 export function CustomerNewPage() {
   const navigate = useNavigate();
   const onboard = useOnboardCustomer();
   const [result, setResult] = useState<CustomerOnboardResponse | null>(null);
+  const [submittedBranches, setSubmittedBranches] = useState<CustomerOnboardBranchInput[]>([]);
+  const [retryResults, setRetryResults] = useState<
+    Record<string, { status: "REGISTERED" | "FAILED"; error?: string }>
+  >({});
+  const [isRetrying, setIsRetrying] = useState(false);
+  const initDevice = useInitializeDevice();
+  const updateCustomer = useUpdateCustomer(result?.customer.id ?? "");
 
   const {
     register,
@@ -70,15 +79,15 @@ export function CustomerNewPage() {
   const { fields, append, remove } = useFieldArray({ control, name: "branches" });
 
   async function onSubmit(values: FormValues) {
+    const branches = values.branches.map((b) => ({
+      ...b,
+      base_url: b.device_type === "VSCU" ? b.base_url || null : null,
+      kra_base_url_override: b.kra_base_url_override || null,
+    }));
     try {
-      const response = await onboard.mutateAsync({
-        name: values.name,
-        branches: values.branches.map((b) => ({
-          ...b,
-          base_url: b.device_type === "VSCU" ? b.base_url || null : null,
-          kra_base_url_override: b.kra_base_url_override || null,
-        })),
-      });
+      const response = await onboard.mutateAsync({ name: values.name, branches });
+      setSubmittedBranches(branches);
+      setRetryResults({});
       setResult(response);
     } catch (err) {
       toast({
@@ -89,8 +98,62 @@ export function CustomerNewPage() {
     }
   }
 
+  async function handleRetryFailed() {
+    if (!result) return;
+    const toRetry = result.branches.filter(
+      (b) => b.status === "FAILED" && retryResults[b.branch_code]?.status !== "REGISTERED",
+    );
+    if (toRetry.length === 0) return;
+
+    setIsRetrying(true);
+    let branchCodes = [...result.customer.branch_codes];
+    for (const failedBranch of toRetry) {
+      const original = submittedBranches.find((b) => b.branch_code === failedBranch.branch_code);
+      if (!original) {
+        setRetryResults((prev) => ({
+          ...prev,
+          [failedBranch.branch_code]: {
+            status: "FAILED",
+            error: "Original branch details no longer available in this session — re-enter it via Initialize device instead.",
+          },
+        }));
+        continue;
+      }
+      try {
+        await initDevice.mutateAsync({
+          branch_code: original.branch_code,
+          tin: original.tin,
+          bhf_id: original.bhf_id,
+          device_type: original.device_type,
+          // Mirrors BranchNewPage.tsx's own field mapping: kra_base_url_override is OSCU-only
+          // server-side (device.py), but VSCU's local app base_url has no dedicated field on
+          // this endpoint, so VSCU branches thread it through the same way that form already
+          // does, for consistency with the existing (manual) fix-up path this replaces.
+          kra_base_url_override:
+            original.device_type === "VSCU"
+              ? original.base_url || null
+              : original.kra_base_url_override || null,
+        });
+        branchCodes = [...branchCodes, original.branch_code];
+        await updateCustomer.mutateAsync({ branch_codes: branchCodes });
+        setRetryResults((prev) => ({ ...prev, [failedBranch.branch_code]: { status: "REGISTERED" } }));
+      } catch (err) {
+        setRetryResults((prev) => ({
+          ...prev,
+          [failedBranch.branch_code]: {
+            status: "FAILED",
+            error: err instanceof Error ? err.message : "Unknown error",
+          },
+        }));
+      }
+    }
+    setIsRetrying(false);
+  }
+
   if (result) {
-    const failedCount = result.branches.filter((b) => b.status === "FAILED").length;
+    const stillFailedCount = result.branches.filter(
+      (b) => b.status === "FAILED" && retryResults[b.branch_code]?.status !== "REGISTERED",
+    ).length;
     return (
       <div className="max-w-2xl space-y-4">
         <PageHeader title="Customer onboarded" description={result.customer.name} />
@@ -104,30 +167,43 @@ export function CustomerNewPage() {
               <p className="text-sm text-muted-foreground">No branches were submitted.</p>
             ) : (
               <ul className="space-y-2 text-sm">
-                {result.branches.map((b) => (
-                  <li key={b.branch_code} className="flex items-start justify-between gap-3 border-b pb-2 last:border-0">
-                    <div>
-                      <p className="font-medium">
-                        {b.branch_code} <span className="text-muted-foreground">({b.device_type})</span>
-                      </p>
-                      {b.error && <p className="text-xs text-destructive">{b.error}</p>}
-                    </div>
-                    <StatusBadge status={b.status} />
-                  </li>
-                ))}
+                {result.branches.map((b) => {
+                  const retry = retryResults[b.branch_code];
+                  const effectiveStatus = retry?.status ?? b.status;
+                  const effectiveError = retry ? retry.error : b.error;
+                  return (
+                    <li key={b.branch_code} className="flex items-start justify-between gap-3 border-b pb-2 last:border-0">
+                      <div>
+                        <p className="font-medium">
+                          {b.branch_code} <span className="text-muted-foreground">({b.device_type})</span>
+                          {retry?.status === "REGISTERED" && (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">(retried)</span>
+                          )}
+                        </p>
+                        {effectiveError && <p className="text-xs text-destructive">{effectiveError}</p>}
+                      </div>
+                      <StatusBadge status={effectiveStatus} />
+                    </li>
+                  );
+                })}
               </ul>
             )}
-            {failedCount > 0 && (
-              <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
-                {failedCount} branch{failedCount > 1 ? "es" : ""} failed to register. Fix the
-                issue and register {failedCount > 1 ? "them" : "it"} individually from{" "}
-                <button className="text-primary hover:underline" onClick={() => navigate("/branches/new")}>
-                  Initialize device
-                </button>
-                , then attach {failedCount > 1 ? "them" : "it"} from this customer's Branches
-                tab — resubmitting this form again would create a second customer, not add to
-                this one.
-              </p>
+            {stillFailedCount > 0 && (
+              <div className="space-y-2 rounded-md bg-muted p-3 text-sm text-muted-foreground">
+                <p>
+                  {stillFailedCount} branch{stillFailedCount > 1 ? "es" : ""} failed to register.
+                  Retry {stillFailedCount > 1 ? "them" : "it"} below (registers the device again
+                  and attaches it to this same customer), or fix the issue and register{" "}
+                  {stillFailedCount > 1 ? "them" : "it"} individually from{" "}
+                  <button className="text-primary hover:underline" onClick={() => navigate("/branches/new")}>
+                    Initialize device
+                  </button>
+                  , then attach from this customer's Branches tab instead.
+                </p>
+                <Button type="button" size="sm" variant="outline" onClick={handleRetryFailed} disabled={isRetrying}>
+                  {isRetrying ? "Retrying…" : `Retry failed branch${stillFailedCount > 1 ? "es" : ""}`}
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>

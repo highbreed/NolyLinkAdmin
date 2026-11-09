@@ -141,13 +141,28 @@ export const customersFixture: Customer[] = [
 
 export const connectorsFixture: Record<string, Connector[]> = {
   [customerIdActive]: [
-    { client_id: "co-0001-0000-0000-0000-000000000001", name: "Production SAP", created_at: daysAgo(119) },
+    {
+      client_id: "co-0001-0000-0000-0000-000000000001",
+      name: "Production SAP",
+      created_at: daysAgo(119),
+      revoked_at: null,
+    },
   ],
   [customerIdGrace]: [
-    { client_id: "co-0002-0000-0000-0000-000000000001", name: "POS middleware", created_at: daysAgo(199) },
+    {
+      client_id: "co-0002-0000-0000-0000-000000000001",
+      name: "POS middleware",
+      created_at: daysAgo(199),
+      revoked_at: null,
+    },
   ],
   [customerIdSuspended]: [
-    { client_id: "co-0003-0000-0000-0000-000000000001", name: "Legacy ERP", created_at: daysAgo(299) },
+    {
+      client_id: "co-0003-0000-0000-0000-000000000001",
+      name: "Legacy ERP",
+      created_at: daysAgo(299),
+      revoked_at: null,
+    },
   ],
   [customerIdNoSub]: [],
 };

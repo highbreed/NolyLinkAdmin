@@ -344,12 +344,39 @@ export const realHandlers = [
       client_id: `co-mock-${crypto.randomUUID()}`,
       name: body.name,
       created_at: new Date().toISOString(),
+      revoked_at: null,
     };
     connectorsFixture[customerId] = [...(connectorsFixture[customerId] ?? []), connector];
     return HttpResponse.json(
       { client_id: connector.client_id, client_secret: `secret_${crypto.randomUUID().replace(/-/g, "")}`, name: connector.name },
       { status: 201 },
     );
+  }),
+
+  http.post("*/v1/customers/:id/connectors/:clientId/rotate", ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const connector = (connectorsFixture[params.id as string] ?? []).find(
+      (c) => c.client_id === params.clientId,
+    );
+    if (!connector) return HttpResponse.json({ detail: "No connector with that client_id" }, { status: 404 });
+    return HttpResponse.json({
+      client_id: connector.client_id,
+      client_secret: `secret_${crypto.randomUUID().replace(/-/g, "")}`,
+      name: connector.name,
+    });
+  }),
+
+  http.post("*/v1/customers/:id/connectors/:clientId/revoke", ({ request, params }) => {
+    const denied = requireAdminAuth(request);
+    if (denied) return denied;
+    const customerId = params.id as string;
+    const existing = connectorsFixture[customerId] ?? [];
+    const connector = existing.find((c) => c.client_id === params.clientId);
+    if (!connector) return HttpResponse.json({ detail: "No connector with that client_id" }, { status: 404 });
+    const revoked: Connector = { ...connector, revoked_at: connector.revoked_at ?? new Date().toISOString() };
+    connectorsFixture[customerId] = existing.map((c) => (c.client_id === revoked.client_id ? revoked : c));
+    return HttpResponse.json(revoked);
   }),
 
   // ---- Real: stepper-form onboarding (customer + branch device registration in one call) ---
