@@ -131,11 +131,24 @@ export function AlertRuleForm({
       </label>
 
       <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
-        This rule would have fired{" "}
-        <span className="font-semibold text-foreground">
-          {previewQuery.data?.fired_count_last_7_days ?? "…"}
-        </span>{" "}
-        times in the last 7 days.
+        {previewQuery.data?.evaluated_as === "current_state_only" ? (
+          <>
+            This metric has no history to look back over — showing whether it would fire{" "}
+            <span className="font-semibold text-foreground">right now</span>:{" "}
+            <span className="font-semibold text-foreground">
+              {previewQuery.data?.fired_count_last_7_days ? "yes" : "no"}
+            </span>
+            .
+          </>
+        ) : (
+          <>
+            This rule would have fired{" "}
+            <span className="font-semibold text-foreground">
+              {previewQuery.data?.fired_count_last_7_days ?? "…"}
+            </span>{" "}
+            times in the last 7 days.
+          </>
+        )}
       </p>
 
       <Button type="submit" disabled={isPending}>

@@ -289,12 +289,20 @@ export interface AlertRuleInput {
 }
 
 export interface NotificationSent {
-  id: string;
+  id: number;
   alert_rule_id: string;
   alert_rule_name: string;
   fired_at: string;
   resolved_at: string | null;
   summary: string;
+}
+
+export interface AlertRulePreview {
+  fired_count_last_7_days: number;
+  // "historical_7d" (a real 7-day backtest — only kra_call_failure_rate has the append-only,
+  // timestamped data to support this) or "current_state_only" (the other 3 metrics only know
+  // their value right now, not history — this is 0 or 1, not a real 7-day count).
+  evaluated_as: "historical_7d" | "current_state_only";
 }
 
 // ---- Real: every inbound client call + response (GET /v1/admin/client-calls), confirmed

@@ -289,7 +289,7 @@ export const alertRulesFixture: AlertRule[] = [
 
 export const notificationsFixture: NotificationSent[] = [
   {
-    id: "ns-0001",
+    id: 1,
     alert_rule_id: "ar-0001",
     alert_rule_name: "Sync lag over 30 min",
     fired_at: hoursAgo(1),
@@ -297,7 +297,7 @@ export const notificationsFixture: NotificationSent[] = [
     summary: "MOMBASA-PORT / stock_moves lag reached 47 min",
   },
   {
-    id: "ns-0002",
+    id: 2,
     alert_rule_id: "ar-0002",
     alert_rule_name: "Grace period ending soon",
     fired_at: daysAgo(1),

@@ -725,6 +725,43 @@ export const realHandlers = [
       paginate(items, url, { searchFields: (e) => [e.action, e.admin_user_email ?? "break-glass key"] }),
     );
   }),
+
+  // ---- Real: alert rules + notifications (confirmed 2026-11-09) --------------------------
+  http.get("*/v1/admin/alert-rules", () => HttpResponse.json(alertRulesFixture)),
+
+  http.post("*/v1/admin/alert-rules", async ({ request }) => {
+    const body = (await request.json()) as Omit<AlertRule, "id" | "created_at">;
+    const rule: AlertRule = { ...body, id: `ar-${crypto.randomUUID().slice(0, 8)}`, created_at: new Date().toISOString() };
+    alertRulesFixture.push(rule);
+    return HttpResponse.json(rule, { status: 201 });
+  }),
+
+  http.patch("*/v1/admin/alert-rules/:id", async ({ params, request }) => {
+    const rule = alertRulesFixture.find((r) => r.id === params.id);
+    if (!rule) return HttpResponse.json({ detail: "Alert rule not found" }, { status: 404 });
+    const body = (await request.json()) as Partial<AlertRule>;
+    Object.assign(rule, body);
+    return HttpResponse.json(rule);
+  }),
+
+  http.get("*/v1/admin/alert-rules/preview", ({ request }) => {
+    const url = new URL(request.url);
+    const metric = url.searchParams.get("metric");
+    // Deterministic-but-plausible mock preview count — clearly a mock, never presented as
+    // more than the local click-through experience. The real backend (confirmed 2026-11-09)
+    // only backtests kra_call_failure_rate for real; every other metric is current-state-only
+    // — this mirrors that same evaluated_as distinction.
+    const seed = metric ? metric.length : 3;
+    return HttpResponse.json({
+      fired_count_last_7_days: metric === "kra_call_failure_rate" ? (seed * 3) % 11 : seed % 2,
+      evaluated_as: metric === "kra_call_failure_rate" ? "historical_7d" : "current_state_only",
+    });
+  }),
+
+  http.get("*/v1/admin/notifications", ({ request }) => {
+    const url = new URL(request.url);
+    return HttpResponse.json(paginate(notificationsFixture, url));
+  }),
 ];
 
 /** Proposed-only handlers — admin_portal_design.md §5/§7, no real backend exists yet. */
@@ -755,37 +792,6 @@ export const mockOnlyHandlers = [
     return HttpResponse.json({ counts });
   }),
 
-  // ---- Proposed: alert rules --------------------------------------------------------------
-  http.get("*/admin/api/v1/alert-rules", () => HttpResponse.json(alertRulesFixture)),
-
-  http.post("*/admin/api/v1/alert-rules", async ({ request }) => {
-    const body = (await request.json()) as Omit<AlertRule, "id" | "created_at">;
-    const rule: AlertRule = { ...body, id: `ar-${crypto.randomUUID().slice(0, 8)}`, created_at: new Date().toISOString() };
-    alertRulesFixture.push(rule);
-    return HttpResponse.json(rule, { status: 201 });
-  }),
-
-  http.patch("*/admin/api/v1/alert-rules/:id", async ({ params, request }) => {
-    const rule = alertRulesFixture.find((r) => r.id === params.id);
-    if (!rule) return HttpResponse.json({ detail: "Alert rule not found" }, { status: 404 });
-    const body = (await request.json()) as Partial<AlertRule>;
-    Object.assign(rule, body);
-    return HttpResponse.json(rule);
-  }),
-
-  http.get("*/admin/api/v1/alert-rules/preview", ({ request }) => {
-    const url = new URL(request.url);
-    const metric = url.searchParams.get("metric");
-    // Deterministic-but-plausible mock preview count — clearly a mock, never presented as
-    // a real backend computation (see docs/frontend_README.md "Ask before assuming" #6).
-    const seed = metric ? metric.length : 3;
-    return HttpResponse.json({ fired_count_last_7_days: (seed * 3) % 11 });
-  }),
-
-  http.get("*/admin/api/v1/notifications", ({ request }) => {
-    const url = new URL(request.url);
-    return HttpResponse.json(paginate(notificationsFixture, url));
-  }),
 
   // Admin user management, customers, connectors, branches, call-logs, monitoring, and the
   // audit log are real now — see realHandlers above, not here.
