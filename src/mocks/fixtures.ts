@@ -316,6 +316,8 @@ export const auditLogFixture: AuditLogEntry[] = [
     before_state: { status: "ACTIVE", suspended_at: null, suspended_reason: null },
     after_state: { status: "SUSPENDED", suspended_at: daysAgo(3), suspended_reason: "Chargeback on invoice INV-0042" },
     reason: "Chargeback on invoice INV-0042",
+    ip_address: "41.90.64.12",
+    request_id: "req-mock-0001",
     created_at: daysAgo(3),
   },
   {
@@ -327,6 +329,8 @@ export const auditLogFixture: AuditLogEntry[] = [
     before_state: null,
     after_state: { branch_code: "KISUMU-WEST", status: "ACTIVE" },
     reason: null,
+    ip_address: "41.90.64.13",
+    request_id: "req-mock-0002",
     created_at: daysAgo(300),
   },
 ];

@@ -315,13 +315,16 @@ export interface ClientCallLogEntry {
 
 export interface AuditLogEntry {
   id: number;
-  admin_user_email: string | null; // null = break-glass X-Admin-Api-Key used
+  admin_user_email: string | null; // actually AdminUser.username — no email column exists
+  // server-side; null = break-glass X-Admin-Api-Key used
   action: string;
   target_type: "customer" | "connector" | "branch" | "invoice" | "alert_rule" | "admin_user" | "outbox";
   target_id: string;
   before_state: Record<string, unknown> | null;
   after_state: Record<string, unknown> | null;
   reason: string | null;
+  ip_address: string | null;
+  request_id: string | null;
   created_at: string;
 }
 

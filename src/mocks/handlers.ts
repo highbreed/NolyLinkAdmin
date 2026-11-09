@@ -708,6 +708,23 @@ export const realHandlers = [
     if (branchCode) items = items.filter((s) => s.branch_code === branchCode);
     return HttpResponse.json([...items].sort((a, b) => b.lag_seconds - a.lag_seconds));
   }),
+
+  // ---- Real: admin audit log (confirmed 2026-11-09) ---------------------------------------
+  http.get("*/v1/admin/audit-log", ({ request }) => {
+    const url = new URL(request.url);
+    const targetType = url.searchParams.get("target_type");
+    const targetId = url.searchParams.get("target_id");
+    const since = url.searchParams.get("since");
+    const until = url.searchParams.get("until");
+    let items = auditLogFixture;
+    if (targetType) items = items.filter((e) => e.target_type === targetType);
+    if (targetId) items = items.filter((e) => e.target_id === targetId);
+    if (since) items = items.filter((e) => e.created_at >= since);
+    if (until) items = items.filter((e) => e.created_at <= until);
+    return HttpResponse.json(
+      paginate(items, url, { searchFields: (e) => [e.action, e.admin_user_email ?? "break-glass key"] }),
+    );
+  }),
 ];
 
 /** Proposed-only handlers — admin_portal_design.md §5/§7, no real backend exists yet. */
@@ -770,20 +787,8 @@ export const mockOnlyHandlers = [
     return HttpResponse.json(paginate(notificationsFixture, url));
   }),
 
-  // ---- Proposed: audit log ------------------------------------------------------------------
-  http.get("*/admin/api/v1/audit-log", ({ request }) => {
-    const url = new URL(request.url);
-    const targetType = url.searchParams.get("target_type");
-    const targetId = url.searchParams.get("target_id");
-    let items = auditLogFixture;
-    if (targetType) items = items.filter((e) => e.target_type === targetType);
-    if (targetId) items = items.filter((e) => e.target_id === targetId);
-    return HttpResponse.json(
-      paginate(items, url, { searchFields: (e) => [e.action, e.admin_user_email ?? "break-glass key"] }),
-    );
-  }),
-  // Admin user management, customers, connectors, branches, and call-logs are real now — see
-  // realHandlers above, not here.
+  // Admin user management, customers, connectors, branches, call-logs, monitoring, and the
+  // audit log are real now — see realHandlers above, not here.
 ];
 
 /** Full set — used by tests (src/mocks/server.ts), which must never depend on a live backend. */
