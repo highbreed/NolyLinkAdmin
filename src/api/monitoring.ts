@@ -2,8 +2,11 @@
  * `useAdminCallLogs` calls the REAL `GET /v1/admin/call-logs` (confirmed against the live
  * backend, 2026-09-01) — merged OSCU/VSCU log viewer, `limit`-capped (most recent N, newest
  * first), no true server-side pagination (see the endpoint's own docstring). Everything else
- * in this file (summary tiles, the timeseries chart, outbox, sync-status) is mocked-only —
- * admin_portal_design.md §5.5, no real backend for those yet.
+ * here (summary tiles, the timeseries chart, outbox, sync-status) is now ALSO real —
+ * confirmed against the live backend, 2026-11-09, GET /v1/admin/monitoring/*. The outbox
+ * list supports free-text search (q) but not sort — newest-first only, same as every other
+ * list endpoint in this admin surface; sort is a client-side no-op until the backend grows
+ * real sort support everywhere, not just here.
  */
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
@@ -20,7 +23,7 @@ import type {
 export function useMonitoringSummary() {
   return useQuery({
     queryKey: ["monitoring-summary"],
-    queryFn: () => apiRequest<MonitoringSummary>("/admin/api/v1/monitoring/summary"),
+    queryFn: () => apiRequest<MonitoringSummary>("/v1/admin/monitoring/summary"),
     refetchInterval: () => (document.visibilityState === "visible" ? 20_000 : false),
   });
 }
@@ -74,7 +77,7 @@ export function useKraCallsTimeseries(rangeHours: number) {
   return useQuery({
     queryKey: ["kra-calls-timeseries", rangeHours],
     queryFn: () =>
-      apiRequest<KraCallTimeseriesPoint[]>("/admin/api/v1/monitoring/kra-calls/timeseries", {
+      apiRequest<KraCallTimeseriesPoint[]>("/v1/admin/monitoring/kra-calls/timeseries", {
         query: { range_hours: rangeHours },
       }),
   });
@@ -92,7 +95,7 @@ export function useOutboxList(params: OutboxListParams) {
   return useQuery({
     queryKey: ["outbox", params],
     queryFn: () =>
-      apiRequest<Page<OutboxItem>>("/admin/api/v1/monitoring/outbox", {
+      apiRequest<Page<OutboxItem>>("/v1/admin/monitoring/outbox", {
         query: {
           page: params.page,
           page_size: params.pageSize,
@@ -107,7 +110,7 @@ export function useOutboxList(params: OutboxListParams) {
 export function useOutboxItem(id: string | undefined) {
   return useQuery({
     queryKey: ["outbox", id],
-    queryFn: () => apiRequest<OutboxItem>(`/admin/api/v1/monitoring/outbox/${id}`),
+    queryFn: () => apiRequest<OutboxItem>(`/v1/admin/monitoring/outbox/${id}`),
     enabled: !!id,
   });
 }
@@ -116,7 +119,7 @@ export function useRetryOutboxItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      apiRequest<OutboxItem>(`/admin/api/v1/monitoring/outbox/${id}/retry`, { method: "POST" }),
+      apiRequest<OutboxItem>(`/v1/admin/monitoring/outbox/${id}/retry`, { method: "POST" }),
     onMutate: async (id: string) => {
       await qc.cancelQueries({ queryKey: ["outbox"] });
       const previous = qc.getQueriesData<Page<OutboxItem>>({ queryKey: ["outbox"] });
@@ -138,7 +141,7 @@ export function useCancelOutboxItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      apiRequest<OutboxItem>(`/admin/api/v1/monitoring/outbox/${id}/cancel`, { method: "POST" }),
+      apiRequest<OutboxItem>(`/v1/admin/monitoring/outbox/${id}/cancel`, { method: "POST" }),
     onMutate: async (id: string) => {
       await qc.cancelQueries({ queryKey: ["outbox"] });
       const previous = qc.getQueriesData<Page<OutboxItem>>({ queryKey: ["outbox"] });
@@ -159,7 +162,7 @@ export function useCancelOutboxItem() {
 export function useSyncStatusList() {
   return useQuery({
     queryKey: ["sync-status"],
-    queryFn: () => apiRequest<SyncStatusRow[]>("/admin/api/v1/monitoring/sync-status"),
+    queryFn: () => apiRequest<SyncStatusRow[]>("/v1/admin/monitoring/sync-status"),
     refetchInterval: 30_000,
   });
 }

@@ -24,7 +24,7 @@ const summary: MonitoringSummary = {
 describe("DashboardPage", () => {
   it("renders each tile correctly from a mocked summary payload", async () => {
     server.use(
-      http.get("*/admin/api/v1/monitoring/summary", () => HttpResponse.json(summary)),
+      http.get("*/v1/admin/monitoring/summary", () => HttpResponse.json(summary)),
     );
 
     renderWithProviders(<DashboardPage />, { route: "/dashboard" });
@@ -38,7 +38,7 @@ describe("DashboardPage", () => {
 
   it("picks the correct worst sync offender from a mixed sync-status fixture", async () => {
     server.use(
-      http.get("*/admin/api/v1/monitoring/summary", () =>
+      http.get("*/v1/admin/monitoring/summary", () =>
         HttpResponse.json({
           ...summary,
           worst_sync_offender: {

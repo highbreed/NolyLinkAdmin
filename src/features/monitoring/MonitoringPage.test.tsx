@@ -27,10 +27,10 @@ function outboxPage(item: OutboxItem): Page<OutboxItem> {
 describe("MonitoringPage — outbox retry", () => {
   it("optimistically flips the row to Pending immediately, then rolls back on a failed retry", async () => {
     server.use(
-      http.get("*/admin/api/v1/monitoring/kra-calls/timeseries", () => HttpResponse.json([])),
-      http.get("*/admin/api/v1/monitoring/sync-status", () => HttpResponse.json([])),
-      http.get("*/admin/api/v1/monitoring/outbox", () => HttpResponse.json(outboxPage(failedItem))),
-      http.post("*/admin/api/v1/monitoring/outbox/:id/retry", async () => {
+      http.get("*/v1/admin/monitoring/kra-calls/timeseries", () => HttpResponse.json([])),
+      http.get("*/v1/admin/monitoring/sync-status", () => HttpResponse.json([])),
+      http.get("*/v1/admin/monitoring/outbox", () => HttpResponse.json(outboxPage(failedItem))),
+      http.post("*/v1/admin/monitoring/outbox/:id/retry", async () => {
         await delay(50);
         return HttpResponse.json({ detail: "still broken" }, { status: 502 });
       }),

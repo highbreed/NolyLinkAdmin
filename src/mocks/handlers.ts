@@ -1,9 +1,10 @@
 /**
  * MSW handlers. Two categories, per docs/frontend_README.md:
  *  - REAL-shaped: /admin/login, /admin/users*, /v1/devices/initialize, /v1/billing/*,
- *    /v1/customers*, /v1/admin/branches*, /v1/admin/call-logs — mirror the live backend's
- *    actual contract (confirmed 2026-09-01) exactly, so these are only registered when
- *    there's no real backend to proxy to (src/mocks/browser.ts).
+ *    /v1/customers*, /v1/admin/branches*, /v1/admin/call-logs, /v1/admin/monitoring/* —
+ *    mirror the live backend's actual contract exactly (confirmed 2026-09-01, monitoring
+ *    confirmed 2026-11-09), so these are only registered when there's no real backend to
+ *    proxy to (src/mocks/browser.ts).
  *  - PROPOSED-only: /admin/api/v1/* — mirror admin_portal_design.md §5's proposal; this
  *    backend does not exist yet anywhere, real or otherwise.
  */
@@ -619,6 +620,94 @@ export const realHandlers = [
     customerCodeAllowlistFixture[customerId] = body.codes.length ? [...withoutThis, entry] : withoutThis;
     return HttpResponse.json(entry);
   }),
+
+  // ---- Real: monitoring summary/timeseries/outbox/sync-status (confirmed 2026-11-09) -----
+  http.get("*/v1/admin/monitoring/summary", () => {
+    const outboxCounts = outboxFixture.reduce(
+      (acc, item) => {
+        acc[item.status] = (acc[item.status] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<OutboxItem["status"], number>,
+    );
+    const successCalls = adminCallLogFixture.filter((c) => c.result_cd === "000").length;
+    const summary: MonitoringSummary = {
+      kra_call_success_rate_1h: successCalls / adminCallLogFixture.length,
+      kra_call_success_rate_24h: successCalls / adminCallLogFixture.length,
+      outbox_counts: {
+        PENDING: outboxCounts.PENDING ?? 0,
+        RETRYING: outboxCounts.RETRYING ?? 0,
+        FAILED: outboxCounts.FAILED ?? 0,
+        SENT: outboxCounts.SENT ?? 0,
+        CANCELLED: outboxCounts.CANCELLED ?? 0,
+      },
+      stale_branch_count: syncStatusFixture.filter((s) => s.lag_seconds > 1800).length,
+      blocked_customer_count: customersFixture.filter((c) => deriveCustomerStatusBucket(c.id) === "BLOCKED").length,
+      worst_sync_offender: [...syncStatusFixture].sort((a, b) => b.lag_seconds - a.lag_seconds)[0] ?? null,
+    };
+    return HttpResponse.json(summary);
+  }),
+
+  http.get("*/v1/admin/monitoring/kra-calls/timeseries", ({ request }) => {
+    const url = new URL(request.url);
+    const rangeHours = Number(url.searchParams.get("range_hours") ?? "24");
+    const points = Array.from({ length: 12 }).map((_, i) => {
+      const hoursBack = (rangeHours / 12) * (11 - i);
+      const bucketStart = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+      return {
+        bucket_start: bucketStart,
+        counts_by_result_cd: {
+          "000": 20 + Math.round(Math.sin(i) * 5) + 15,
+          "999": i === 8 ? 6 : Math.round(Math.random() * 2),
+          "990": i === 5 ? 4 : 0,
+        },
+      };
+    });
+    return HttpResponse.json(points);
+  }),
+
+  http.get("*/v1/admin/monitoring/outbox", ({ request }) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    let items = outboxFixture;
+    if (status) items = items.filter((o) => o.status === status);
+    return HttpResponse.json(
+      paginate(items, url, {
+        searchFields: (o) => [o.endpoint, o.branch_code ?? "", o.customer_name ?? ""],
+        sortAccessor: (o, id) => (o as unknown as Record<string, string | number>)[id] ?? "",
+      }),
+    );
+  }),
+
+  http.get("*/v1/admin/monitoring/outbox/:id", ({ params }) => {
+    const item = outboxFixture.find((o) => o.id === params.id);
+    if (!item) return HttpResponse.json({ detail: "Outbox item not found" }, { status: 404 });
+    return HttpResponse.json(item);
+  }),
+
+  http.post("*/v1/admin/monitoring/outbox/:id/retry", ({ params }) => {
+    const item = outboxFixture.find((o) => o.id === params.id);
+    if (!item) return HttpResponse.json({ detail: "Outbox item not found" }, { status: 404 });
+    item.status = "PENDING";
+    item.attempts = 0;
+    item.last_error = null;
+    return HttpResponse.json(item);
+  }),
+
+  http.post("*/v1/admin/monitoring/outbox/:id/cancel", ({ params }) => {
+    const item = outboxFixture.find((o) => o.id === params.id);
+    if (!item) return HttpResponse.json({ detail: "Outbox item not found" }, { status: 404 });
+    item.status = "CANCELLED";
+    return HttpResponse.json(item);
+  }),
+
+  http.get("*/v1/admin/monitoring/sync-status", ({ request }) => {
+    const url = new URL(request.url);
+    const branchCode = url.searchParams.get("branch_code");
+    let items = syncStatusFixture;
+    if (branchCode) items = items.filter((s) => s.branch_code === branchCode);
+    return HttpResponse.json([...items].sort((a, b) => b.lag_seconds - a.lag_seconds));
+  }),
 ];
 
 /** Proposed-only handlers — admin_portal_design.md §5/§7, no real backend exists yet. */
@@ -647,94 +736,6 @@ export const mockOnlyHandlers = [
       counts[bucket]++;
     }
     return HttpResponse.json({ counts });
-  }),
-
-  // ---- Proposed: monitoring summary/timeseries/outbox/sync-status ------------------------
-  http.get("*/admin/api/v1/monitoring/summary", () => {
-    const outboxCounts = outboxFixture.reduce(
-      (acc, item) => {
-        acc[item.status] = (acc[item.status] ?? 0) + 1;
-        return acc;
-      },
-      {} as Record<OutboxItem["status"], number>,
-    );
-    const successCalls = adminCallLogFixture.filter((c) => c.result_cd === "000").length;
-    const summary: MonitoringSummary = {
-      kra_call_success_rate_1h: successCalls / adminCallLogFixture.length,
-      kra_call_success_rate_24h: successCalls / adminCallLogFixture.length,
-      outbox_counts: {
-        PENDING: outboxCounts.PENDING ?? 0,
-        RETRYING: outboxCounts.RETRYING ?? 0,
-        FAILED: outboxCounts.FAILED ?? 0,
-        SENT: outboxCounts.SENT ?? 0,
-        CANCELLED: outboxCounts.CANCELLED ?? 0,
-      },
-      stale_branch_count: syncStatusFixture.filter((s) => s.lag_seconds > 1800).length,
-      blocked_customer_count: customersFixture.filter((c) => deriveCustomerStatusBucket(c.id) === "BLOCKED").length,
-      worst_sync_offender: [...syncStatusFixture].sort((a, b) => b.lag_seconds - a.lag_seconds)[0] ?? null,
-    };
-    return HttpResponse.json(summary);
-  }),
-
-  http.get("*/admin/api/v1/monitoring/kra-calls/timeseries", ({ request }) => {
-    const url = new URL(request.url);
-    const rangeHours = Number(url.searchParams.get("range_hours") ?? "24");
-    const points = Array.from({ length: 12 }).map((_, i) => {
-      const hoursBack = (rangeHours / 12) * (11 - i);
-      const bucketStart = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
-      return {
-        bucket_start: bucketStart,
-        counts_by_result_cd: {
-          "000": 20 + Math.round(Math.sin(i) * 5) + 15,
-          "999": i === 8 ? 6 : Math.round(Math.random() * 2),
-          "990": i === 5 ? 4 : 0,
-        },
-      };
-    });
-    return HttpResponse.json(points);
-  }),
-
-  http.get("*/admin/api/v1/monitoring/outbox", ({ request }) => {
-    const url = new URL(request.url);
-    const status = url.searchParams.get("status");
-    let items = outboxFixture;
-    if (status) items = items.filter((o) => o.status === status);
-    return HttpResponse.json(
-      paginate(items, url, {
-        searchFields: (o) => [o.endpoint, o.branch_code ?? "", o.customer_name ?? ""],
-        sortAccessor: (o, id) => (o as unknown as Record<string, string | number>)[id] ?? "",
-      }),
-    );
-  }),
-
-  http.get("*/admin/api/v1/monitoring/outbox/:id", ({ params }) => {
-    const item = outboxFixture.find((o) => o.id === params.id);
-    if (!item) return HttpResponse.json({ detail: "Outbox item not found" }, { status: 404 });
-    return HttpResponse.json(item);
-  }),
-
-  http.post("*/admin/api/v1/monitoring/outbox/:id/retry", ({ params }) => {
-    const item = outboxFixture.find((o) => o.id === params.id);
-    if (!item) return HttpResponse.json({ detail: "Outbox item not found" }, { status: 404 });
-    item.status = "PENDING";
-    item.attempts = 0;
-    item.last_error = null;
-    return HttpResponse.json(item);
-  }),
-
-  http.post("*/admin/api/v1/monitoring/outbox/:id/cancel", ({ params }) => {
-    const item = outboxFixture.find((o) => o.id === params.id);
-    if (!item) return HttpResponse.json({ detail: "Outbox item not found" }, { status: 404 });
-    item.status = "CANCELLED";
-    return HttpResponse.json(item);
-  }),
-
-  http.get("*/admin/api/v1/monitoring/sync-status", ({ request }) => {
-    const url = new URL(request.url);
-    const branchCode = url.searchParams.get("branch_code");
-    let items = syncStatusFixture;
-    if (branchCode) items = items.filter((s) => s.branch_code === branchCode);
-    return HttpResponse.json([...items].sort((a, b) => b.lag_seconds - a.lag_seconds));
   }),
 
   // ---- Proposed: alert rules --------------------------------------------------------------
